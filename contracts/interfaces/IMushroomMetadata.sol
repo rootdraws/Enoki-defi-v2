@@ -22,5 +22,8 @@ abstract contract IMushroomMetadata {
         bytes calldata data
     ) external virtual;
 
-    function setResolver(address nftContract, address resolver) public virtual;
+    function setResolver(address nftContract, address resolver) external virtual;
+
+    event MushroomLifespanSet(address indexed nftContract, uint256 indexed nftIndex, uint256 lifespan);
+    event ResolverSet(address indexed nftContract, address resolver);
 }

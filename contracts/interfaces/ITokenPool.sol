@@ -8,4 +8,8 @@ abstract contract ITokenPool {
     function balance() external virtual view returns (uint256);
     function transfer(address to, uint256 value) external virtual returns (bool);
     function rescueFunds(address tokenToRescue, address to, uint256 amount) external virtual returns (bool);
+
+    event Transfer(address indexed to, uint256 value);
+    event FundsRescued(address indexed tokenToRescue, address indexed to, uint256 amount);
+
 }

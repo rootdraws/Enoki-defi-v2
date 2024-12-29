@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-/* TOKEN FLOW
-
-ETH Staking → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
-
-*/
-
-
 interface ISporeToken {
     /* ========== STANDARD ERC20 ========== */
     function totalSupply() external view returns (uint256);
@@ -42,4 +35,11 @@ interface ISporeToken {
     function addMinter(address account) external;
 
     function removeMinter(address account) external;
+
+    event Burn(address indexed from, uint256 amount);
+    event Mint(address indexed to, uint256 amount);
+    event InitialLiquidityTransferRightsAdded(address indexed account);
+    event TransfersEnabled();
+    event MinterAdded(address indexed account);
+    event MinterRemoved(address indexed account);
 }
