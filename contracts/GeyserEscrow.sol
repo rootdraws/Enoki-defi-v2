@@ -1,69 +1,108 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
-
-/**
-* @title GeyserEscrow
-* @dev Manages the locking of ENOKI tokens into the geyser reward system
-* Can be modified to support multiple reward tokens
-
-TOKEN FLOW
-
-ETH Staking → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
-
-*/
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./EnokiGeyser.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/**
+ * @title GeyserEscrow
+ * @notice Manages locking of tokens into the geyser reward system
+ * @dev Supports token locking with potential for multi-token expansion
+ * 
+ * Token Flow:
+ * ETH Staking → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
+ */
 contract GeyserEscrow is Ownable {
-   // Reference to main geyser contract
-   EnokiGeyser public geyser;
+    using SafeERC20 for IERC20;
 
-   // To add multiple token support:
-   // mapping(address => bool) public allowedRewardTokens;
-   // event RewardTokenAdded(address token);
-   // event RewardTokenRemoved(address token);
+    // Interface for geyser interaction
+    interface IEnokiGeyser {
+        function getDistributionToken() external view returns (IERC20);
+        function lockTokens(uint256 amount, uint256 durationSec) external;
+    }
 
-   constructor(EnokiGeyser geyser_) public {
-       geyser = geyser_;
-       // If adding multiple tokens:
-       // allowedRewardTokens[address(geyser.getDistributionToken())] = true;
-   }
+    // Reference to main geyser contract
+    IEnokiGeyser public immutable geyser;
 
-   // To add new reward tokens:
-   // function addRewardToken(address tokenAddress) external onlyOwner {
-   //     allowedRewardTokens[tokenAddress] = true;
-   //     emit RewardTokenAdded(tokenAddress);
-   // }
+    // Potential multi-token support (commented out)
+    mapping(address => bool) private _allowedRewardTokens;
 
-   // function removeRewardToken(address tokenAddress) external onlyOwner {
-   //     allowedRewardTokens[tokenAddress] = false;
-   //     emit RewardTokenRemoved(tokenAddress);
-   // }
+    // Events
+    event TokensLocked(uint256 amount, uint256 duration);
+    event RewardTokenAdded(address indexed token);
+    event RewardTokenRemoved(address indexed token);
 
-   /**
-    * @dev Locks ENOKI tokens into the geyser
-    * @param amount Amount of tokens to lock
-    * @param durationSec Duration tokens are locked for
-    *
-    * For multiple tokens, would modify to:
-    * function lockTokens(
-    *     address tokenAddress,
-    *     uint256 amount,
-    *     uint256 durationSec
-    * )
-    */
-   function lockTokens(
-       uint256 amount,
-       uint256 durationSec
-   ) external onlyOwner {
-       // For multiple tokens:
-       // require(allowedRewardTokens[tokenAddress], "Token not allowed");
-       // IERC20 distributionToken = IERC20(tokenAddress);
+    /**
+     * @notice Constructor sets up the geyser reference
+     * @param _geyser Address of the geyser contract
+     */
+    constructor(IEnokiGeyser _geyser) Ownable(msg.sender) {
+        geyser = _geyser;
+        
+        // Optionally add initial distribution token
+        address initialToken = address(geyser.getDistributionToken());
+        _allowedRewardTokens[initialToken] = true;
+    }
 
-       IERC20 distributionToken = geyser.getDistributionToken();
-       distributionToken.approve(address(geyser), amount);
+    /**
+     * @notice Add a new reward token to allowed list
+     * @param tokenAddress Address of the token to allow
+     */
+    function addRewardToken(address tokenAddress) external onlyOwner {
+        require(tokenAddress != address(0), "Invalid token address");
+        _allowedRewardTokens[tokenAddress] = true;
+        emit RewardTokenAdded(tokenAddress);
+    }
 
-       geyser.lockTokens(amount, durationSec);
-   }
+    /**
+     * @notice Remove a reward token from allowed list
+     * @param tokenAddress Address of the token to disallow
+     */
+    function removeRewardToken(address tokenAddress) external onlyOwner {
+        _allowedRewardTokens[tokenAddress] = false;
+        emit RewardTokenRemoved(tokenAddress);
+    }
+
+    /**
+     * @notice Check if a token is allowed
+     * @param tokenAddress Token to check
+     * @return Whether the token is allowed
+     */
+    function isRewardTokenAllowed(address tokenAddress) external view returns (bool) {
+        return _allowedRewardTokens[tokenAddress];
+    }
+
+    /**
+     * @notice Lock tokens into the geyser
+     * @param amount Amount of tokens to lock
+     * @param durationSec Duration tokens are locked for
+     */
+    function lockTokens(
+        uint256 amount,
+        uint256 durationSec
+    ) external onlyOwner {
+        // Get distribution token from geyser
+        IERC20 distributionToken = geyser.getDistributionToken();
+        
+        // Validate token (if multi-token support is desired)
+        require(
+            _allowedRewardTokens[address(distributionToken)], 
+            "Token not allowed"
+        );
+
+        // Approve and lock tokens
+        distributionToken.safeApprove(address(geyser), amount);
+        geyser.lockTokens(amount, durationSec);
+
+        emit TokensLocked(amount, durationSec);
+    }
+
+    /**
+     * @notice Retrieve the current distribution token
+     * @return Address of the distribution token
+     */
+    function getDistributionToken() external view returns (address) {
+        return address(geyser.getDistributionToken());
+    }
 }

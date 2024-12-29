@@ -1,33 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
-
-/**
-* @title EnokiGeyser
-* @dev Modified version of the Geyser staking system for Mushroom NFTs
-* 
-* Key differences from traditional Geyser:
-* - Stakes NFTs instead of LP tokens
-* - NFTs have strength (affects rewards) and lifespan
-* - NFTs can "die" and get burned
-* - 5% of rewards go to dev/chef addresses
-* 
-* Core Mechanics:
-* 1. Users can stake Mushroom NFTs
-* 2. Each NFT has:
-*    - Strength (determines reward rate)
-*    - Lifespan (NFT can "die")
-* 3. Rewards:
-*    - Based on NFT strength * time staked
-*    - Distributed in ENOKI tokens
-*    - 5% goes to dev/chef addresses
-* 4. When unstaking:
-*    - If NFT is dead (lifespan used up) -> burn it
-*    - If NFT is alive -> reduce lifespan and return to user
-*/
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import "./TokenPool.sol";
@@ -35,121 +11,162 @@ import "./Defensible.sol";
 import "./MushroomNFT.sol";
 import "./MushroomLib.sol";
 import "./metadata/MetadataResolver.sol";
+import "./BannedContractList.sol";
 
-contract EnokiGeyser is Initializable, OwnableUpgradeSafe, AccessControlUpgradeSafe, ReentrancyGuardUpgradeSafe, Defensible {
-   using SafeMath for uint256;
-   using MushroomLib for MushroomLib.MushroomData;
-   using MushroomLib for MushroomLib.MushroomType;
+/**
+ * @title EnokiGeyser
+ * @notice Modified Geyser staking system for Mushroom NFTs
+ * @dev Implements NFT staking with unique mechanics
+ * 
+ * Key differences from traditional Geyser:
+ * - Stakes NFTs instead of LP tokens
+ * - NFTs have strength (affects rewards) and lifespan
+ * - NFTs can "die" and get burned
+ * - Portion of rewards go to dev/chef addresses
+ */
+contract EnokiGeyser is Ownable, ReentrancyGuard, Defensible {
+    using MushroomLib for MushroomLib.MushroomData;
+    using MushroomLib for MushroomLib.MushroomType;
 
-   // Key events for tracking system state
-   event Staked(address indexed user, address nftContract, uint256 nftId, uint256 total, bytes data);
-   event Unstaked(address indexed user, address nftContract, uint256 nftId, uint256 total, uint256 indexed stakeIndex, bytes data);
-   event TokensClaimed(address indexed user, uint256 amount, uint256 userReward, uint256 devReward);
-   event LifespanUsed(address nftContract, uint256 nftIndex, uint256 lifespanUsed, uint256 lifespan);
-   event NewLifespan(address nftContract, uint256 nftIndex, uint256 lifespan);
-   event BurnedMushroom(address nftContract, uint256 nftIndex);
+    // Key events for tracking system state
+    event Staked(address indexed user, address nftContract, uint256 nftId, uint256 total, bytes data);
+    event Unstaked(address indexed user, address nftContract, uint256 nftId, uint256 total, uint256 indexed stakeIndex, bytes data);
+    event TokensClaimed(address indexed user, uint256 amount, uint256 userReward, uint256 devReward);
+    event LifespanUsed(address nftContract, uint256 nftIndex, uint256 lifespanUsed, uint256 lifespan);
+    event NewLifespan(address nftContract, uint256 nftIndex, uint256 lifespan);
+    event BurnedMushroom(address nftContract, uint256 nftIndex);
 
-   // Core state variables
-   TokenPool public _unlockedPool;
-   TokenPool public _lockedPool;
-   MetadataResolver public metadataResolver;
-   IERC20 public enokiToken;
-   uint256 public maxStakesPerAddress;
-   
-   // Constants
-   uint256 public constant SECONDS_PER_WEEK = 604800;
-   uint256 public constant MAX_PERCENTAGE = 100;
+    // Core state variables
+    TokenPool public unlockedPool;
+    TokenPool public lockedPool;
+    MetadataResolver public metadataResolver;
+    IERC20 public enokiToken;
+    BannedContractList public bannedContractList;
 
-   // Dev reward configuration
-   uint256 public devRewardPercentage = 0; // 0% - 100%
-   address public devRewardAddress;
+    // Stake configuration
+    uint256 public maxStakesPerAddress;
+    uint256 public stakingEnabledTime;
 
-   /**
-    * @dev Stake struct represents a single staked NFT
-    */
-   struct Stake {
-       address nftContract;    // NFT contract address
-       uint256 nftIndex;      // Token ID
-       uint256 strength;      // Affects reward rate
-       uint256 stakedAt;      // Timestamp of stake
-   }
+    // Constants
+    uint256 public constant SECONDS_PER_WEEK = 604_800;
+    uint256 public constant MAX_PERCENTAGE = 100;
 
-   // User accounting state
-   mapping(address => UserTotals) private _userTotals;
-   mapping(address => Stake[]) private _userStakes;
+    // Dev reward configuration
+    uint256 public devRewardPercentage;
+    address public devRewardAddress;
 
-   /**
-    * @dev Main staking function - transfers NFT to contract
-    */
-   function stake(
-       address nftContract,
-       uint256 nftIndex,
-       bytes calldata data
-   ) external defend(bannedContractList) {
-       require(now > stakingEnabledTime, "staking-too-early");
-       require(metadataResolver.isStakeable(nftContract, nftIndex), "EnokiGeyser: nft not stakeable");
-       _stakeFor(msg.sender, msg.sender, nftContract, nftIndex);
-   }
+    /**
+     * @dev Stake struct represents a single staked NFT
+     */
+    struct Stake {
+        address nftContract;    // NFT contract address
+        uint256 nftIndex;       // Token ID
+        uint256 strength;       // Affects reward rate
+        uint256 stakedAt;       // Timestamp of stake
+    }
 
-   /**
-    * @dev Main unstaking function - burns or returns NFT based on lifespan
-    */
-   function _unstake(uint256 stakeIndex)
-       private
-       returns (
-           uint256 totalReward,
-           uint256 userReward,
-           uint256 devReward
-       )
-   {
-       // Get stake info
-       UserTotals storage totals = _userTotals[msg.sender];
-       Stake[] storage accountStakes = _userStakes[msg.sender];
-       Stake storage currentStake = accountStakes[stakeIndex];
+    // User accounting state
+    mapping(address => uint256) private _userTotalStaked;
+    mapping(address => Stake[]) private _userStakes;
 
-       // Calculate lifespan used and check if mushroom died
-       uint256 lifespanUsed = now.sub(currentStake.stakedAt);
-       bool deadMushroom = false;
+    constructor(
+        IERC20 _enokiToken,
+        MetadataResolver _metadataResolver,
+        BannedContractList _bannedContractList
+    ) Ownable(msg.sender) {
+        enokiToken = _enokiToken;
+        metadataResolver = _metadataResolver;
+        bannedContractList = _bannedContractList;
+    }
 
-       // Handle dead mushrooms
-       if (lifespanUsed >= metadata.lifespan) {
-           lifespanUsed = metadata.lifespan;
-           deadMushroom = true;
-       }
+    /**
+     * @notice Stake an NFT
+     * @dev Transfers NFT to contract and records stake
+     */
+    function stake(
+        address nftContract,
+        uint256 nftIndex,
+        bytes calldata data
+    ) external nonReentrant defend(bannedContractList) {
+        require(block.timestamp > stakingEnabledTime, "Staking not yet enabled");
+        require(metadataResolver.isStakeable(nftContract, nftIndex), "NFT not stakeable");
+        
+        _stakeFor(msg.sender, nftContract, nftIndex, data);
+    }
 
-       // Calculate rewards based on strength and time staked
-       rewardAmount = computeNewReward(rewardAmount, metadata.strength, lifespanUsed);
+    /**
+     * @dev Internal stake implementation
+     */
+    function _stakeFor(
+        address staker,
+        address nftContract,
+        uint256 nftIndex,
+        bytes calldata data
+    ) internal {
+        // Implement stake logic
+        // Transfer NFT, record stake, update user totals
+        IERC721(nftContract).transferFrom(staker, address(this), nftIndex);
 
-       // Burn dead mushrooms or return with reduced lifespan
-       if (deadMushroom && metadataResolver.isBurnable(currentStake.nftContract, currentStake.nftIndex)) {
-           MushroomNFT(currentStake.nftContract).burn(currentStake.nftIndex);
-           emit BurnedMushroom(currentStake.nftContract, currentStake.nftIndex);
-       } else {
-           metadataResolver.setMushroomLifespan(currentStake.nftContract, currentStake.nftIndex, metadata.lifespan.sub(lifespanUsed), "");
-           IERC721(currentStake.nftContract).transferFrom(address(this), msg.sender, currentStake.nftIndex);
-       }
+        Stake memory newStake = Stake({
+            nftContract: nftContract,
+            nftIndex: nftIndex,
+            strength: _getMushroomStrength(nftContract, nftIndex),
+            stakedAt: block.timestamp
+        });
 
-       // Calculate and distribute rewards
-       (userReward, devReward) = computeDevReward(totalReward);
-       
-       // Transfer rewards
-       if (userReward > 0) {
-           require(enokiToken.transfer(msg.sender, userReward));
-       }
-       if (devReward > 0) {
-           require(enokiToken.transfer(devRewardAddress, devReward));
-       }
-   }
+        _userStakes[staker].push(newStake);
+        _userTotalStaked[staker] += 1;
 
-   /**
-    * @dev Calculates rewards based on strength and time staked
-    */
-   function computeNewReward(
-       uint256 currentReward,
-       uint256 strength,
-       uint256 timeStaked
-   ) private view returns (uint256) {
-       uint256 newReward = strength.mul(timeStaked).div(SECONDS_PER_WEEK);
-       return currentReward.add(newReward);
-   }
+        emit Staked(staker, nftContract, nftIndex, _userTotalStaked[staker], data);
+    }
+
+    /**
+     * @dev Retrieves mushroom strength from metadata resolver
+     */
+    function _getMushroomStrength(address nftContract, uint256 nftIndex) internal view returns (uint256) {
+        MushroomLib.MushroomData memory mushroomData = metadataResolver.getMushroomData(
+            nftContract, 
+            nftIndex, 
+            ""  // Optional additional data
+        );
+        return mushroomData.strength;
+    }
+
+    /**
+     * @dev Calculates rewards based on strength and time staked
+     */
+    function computeNewReward(
+        uint256 currentReward,
+        uint256 strength,
+        uint256 timeStaked
+    ) internal pure returns (uint256) {
+        uint256 newReward = (strength * timeStaked) / SECONDS_PER_WEEK;
+        return currentReward + newReward;
+    }
+
+    /**
+     * @dev Compute dev and user rewards
+     */
+    function computeDevReward(uint256 totalReward) internal view returns (uint256 userReward, uint256 devReward) {
+        devReward = (totalReward * devRewardPercentage) / MAX_PERCENTAGE;
+        userReward = totalReward - devReward;
+    }
+
+    /**
+     * @notice Set dev reward percentage
+     * @dev Allows owner to adjust dev reward rate
+     */
+    function setDevRewardPercentage(uint256 _percentage) external onlyOwner {
+        require(_percentage <= MAX_PERCENTAGE, "Invalid percentage");
+        devRewardPercentage = _percentage;
+    }
+
+    /**
+     * @notice Set dev reward address
+     * @dev Allows owner to change dev reward recipient
+     */
+    function setDevRewardAddress(address _address) external onlyOwner {
+        require(_address != address(0), "Invalid address");
+        devRewardAddress = _address;
+    }
 }

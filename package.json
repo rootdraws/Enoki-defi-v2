@@ -7,6 +7,7 @@
   "dependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@openzeppelin/contracts": "^5.1.0",
+    "@openzeppelin/contracts-upgradeable": "^5.1.0",
     "@safe-global/protocol-kit": "^5.1.1",
     "dotenv": "^16.4.7",
     "ethers": "^6.13.4"

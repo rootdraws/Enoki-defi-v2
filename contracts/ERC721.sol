@@ -1,79 +1,112 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 /**
-* @title ERC721UpgradeSafe
-* @dev Upgradeable version of OpenZeppelin's ERC721 implementation
-* Used for Mushroom NFTs to allow upgrades while preserving state/address
-*/
+ * @title ERC721UpgradeSafe
+ * @notice Upgradeable ERC721 implementation for Mushroom NFTs
+ * @dev Allows contract upgrades while preserving state and address
+ */
+abstract contract ERC721UpgradeSafe is 
+    Initializable, 
+    ERC721Upgradeable, 
+    ERC721EnumerableUpgradeable, 
+    ERC721URIStorageUpgradeable,
+    OwnableUpgradeable 
+{
+    /**
+     * @dev Initializer function for the upgradeable NFT contract
+     * @param name Name of the NFT collection
+     * @param symbol Symbol for the NFT collection
+     */
+    function __ERC721UpgradeSafe_init(
+        string memory name, 
+        string memory symbol
+    ) internal onlyInitializing {
+        __Initializable_init();
+        __ERC721_init(name, symbol);
+        __ERC721Enumerable_init();
+        __ERC721URIStorage_init();
+        __Ownable_init(msg.sender);
+    }
 
-import "@openzeppelin/contracts/utils/Context.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+    /**
+     * @dev Override required by multiple inheritance
+     */
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 firstTokenId,
+        uint256 batchSize
+    ) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
+        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
+    }
 
-contract ERC721UpgradeSafe is Initializable, ContextUpgradeSafe, ERC165UpgradeSafe, IERC721, IERC721Metadata, IERC721Enumerable {
-   using SafeMath for uint256;
-   using Address for address;
-   using EnumerableSet for EnumerableSet.UintSet;
-   using EnumerableMap for EnumerableMap.UintToAddressMap;
-   using Strings for uint256;
+    /**
+     * @dev Override tokenURI to use URIStorage implementation
+     */
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        virtual
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
+        returns (string memory)
+    {
+        return ERC721URIStorageUpgradeable.tokenURI(tokenId);
+    }
 
-   // Magic value for ERC721 receiver validation
-   bytes4 private constant _ERC721_RECEIVED = 0x150b7a02;
+    /**
+     * @dev Override supportsInterface to resolve multiple inheritance
+     */
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(
+            ERC721Upgradeable, 
+            ERC721EnumerableUpgradeable, 
+            ERC721URIStorageUpgradeable
+        )
+        returns (bool)
+    {
+        return 
+            ERC721Upgradeable.supportsInterface(interfaceId) ||
+            ERC721EnumerableUpgradeable.supportsInterface(interfaceId) ||
+            ERC721URIStorageUpgradeable.supportsInterface(interfaceId);
+    }
 
-   // Core storage mappings
-   mapping (address => EnumerableSet.UintSet) private _holderTokens;        // Maps addresses to their owned tokens
-   EnumerableMap.UintToAddressMap private _tokenOwners;                     // Maps token IDs to owners
-   mapping (uint256 => address) private _tokenApprovals;                    // Maps token ID to approved address
-   mapping (address => mapping (address => bool)) private _operatorApprovals;// Maps owner to operator approvals
+    /**
+     * @dev Safely mint a new token
+     * @param to Recipient of the token
+     * @param tokenId ID of the token to mint
+     * @param tokenUri Metadata URI for the token
+     */
+    function _safeMint(
+        address to, 
+        uint256 tokenId, 
+        string memory tokenUri
+    ) internal virtual {
+        super._safeMint(to, tokenId);
+        _setTokenURI(tokenId, tokenUri);
+    }
 
-   // Metadata storage
-   string private _name;                        // Token collection name
-   string private _symbol;                      // Token symbol
-   mapping(uint256 => string) private _tokenURIs;// Individual token URIs
-   string private _baseURI;                     // Base URI for all tokens
-
-   // Interface IDs for ERC165 detection
-   bytes4 private constant _INTERFACE_ID_ERC721 = 0x80ac58cd;
-   bytes4 private constant _INTERFACE_ID_ERC721_METADATA = 0x5b5e139f;
-   bytes4 private constant _INTERFACE_ID_ERC721_ENUMERABLE = 0x780e9d63;
-
-   /**
-    * @dev Initializer function - replaces constructor for upgradeable pattern
-    * @param name Name of the NFT collection
-    * @param symbol Symbol for the NFT collection
-    */
-   function __ERC721_init(string memory name, string memory symbol) internal initializer {
-       __Context_init_unchained();
-       __ERC165_init_unchained();
-       __ERC721_init_unchained(name, symbol);
-   }
-
-   function __ERC721_init_unchained(string memory name, string memory symbol) internal initializer {
-       _name = name;
-       _symbol = symbol;
-
-       // Register ERC721 interfaces
-       _registerInterface(_INTERFACE_ID_ERC721);
-       _registerInterface(_INTERFACE_ID_ERC721_METADATA);
-       _registerInterface(_INTERFACE_ID_ERC721_ENUMERABLE);
-   }
-
-   // Standard ERC721 functionality with upgradeable modifications...
-   // [Previous function implementations remain the same]
-
-   /**
-    * @dev Storage gap for upgrade safety
-    * Reserves storage slots to avoid layout collisions in future upgrades
-    */
-   uint256[41] private __gap;
+    /**
+     * @dev Burn a token
+     * @param tokenId ID of the token to burn
+     */
+    function _burn(uint256 tokenId) 
+        internal 
+        virtual 
+        override(
+            ERC721Upgradeable, 
+            ERC721URIStorageUpgradeable
+        ) 
+    {
+        super._burn(tokenId);
+    }
 }

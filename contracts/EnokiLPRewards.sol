@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title EnokiLPStaking
- * @dev Manages ENOKI-ETH LP token staking and SPORE rewards
+ * @notice Manages ENOKI-ETH LP token staking and SPORE rewards
  * 
- * Staking Flow:
+ * @dev Staking Flow:
  * 1. Users provide ENOKI-ETH to Uniswap → Get LP tokens
  * 2. Stake LP tokens here → Earn SPORE
  * 3. Use SPORE → Mint Mushrooms
  * 4. Stake Mushrooms → Earn ENOKI (via Geyser)
  */
-
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract EnokiLPStaking is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -27,8 +27,8 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
     // Staking state
     struct UserInfo {
         uint256 amount;           // LP tokens staked
-        uint256 rewardDebt;      // Reward accounting
-        uint256 lastStakeTime;   // For potential bonus calculations
+        uint256 rewardDebt;       // Reward accounting
+        uint256 lastStakeTime;    // For potential bonus calculations
     }
     
     // User balances
@@ -40,6 +40,9 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
     uint256 public lastRewardTime;         // Last reward distribution
     uint256 public accSporePerShare;       // Accumulated rewards per share
 
+    // Constants
+    uint256 private constant PRECISION_FACTOR = 1e12;
+
     // Events
     event Stake(address indexed user, uint256 amount);
     event Unstake(address indexed user, uint256 amount);
@@ -47,57 +50,67 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
     event RateUpdated(uint256 newRate);
 
     constructor(
-        address _lpToken,
-        address _sporeToken,
+        IERC20 _lpToken,
+        IERC20 _sporeToken,
         uint256 _sporePerSecond
-    ) {
-        lpToken = IERC20(_lpToken);
-        sporeToken = IERC20(_sporeToken);
+    ) Ownable(msg.sender) {
+        lpToken = _lpToken;
+        sporeToken = _sporeToken;
         sporePerSecond = _sporePerSecond;
         lastRewardTime = block.timestamp;
     }
 
     /**
-     * @dev Update reward variables
-     * Must be called before any stake/unstake
+     * @notice Calculate and update reward variables
      */
-    modifier updateReward() {
-        if (block.timestamp > lastRewardTime && totalStaked != 0) {
-            uint256 timeElapsed = block.timestamp - lastRewardTime;
-            uint256 sporeReward = timeElapsed * sporePerSecond;
-            accSporePerShare += (sporeReward * 1e12) / totalStaked;
-            lastRewardTime = block.timestamp;
+    function updatePool() public {
+        if (block.timestamp <= lastRewardTime || totalStaked == 0) {
+            return;
         }
-        _;
+
+        uint256 timeElapsed = block.timestamp - lastRewardTime;
+        uint256 sporeReward = timeElapsed * sporePerSecond;
+        accSporePerShare += (sporeReward * PRECISION_FACTOR) / totalStaked;
+        lastRewardTime = block.timestamp;
     }
 
     /**
-     * @dev Returns pending SPORE rewards for user
+     * @notice Returns pending SPORE rewards for a user
+     * @param _user Address of the user
+     * @return Pending rewards amount
      */
     function pendingRewards(address _user) public view returns (uint256) {
         UserInfo storage user = userInfo[_user];
-        uint256 _accSporePerShare = accSporePerShare;
+        uint256 tempAccSporePerShare = accSporePerShare;
         
         if (block.timestamp > lastRewardTime && totalStaked != 0) {
             uint256 timeElapsed = block.timestamp - lastRewardTime;
             uint256 sporeReward = timeElapsed * sporePerSecond;
-            _accSporePerShare += (sporeReward * 1e12) / totalStaked;
+            tempAccSporePerShare += (sporeReward * PRECISION_FACTOR) / totalStaked;
         }
         
-        return (user.amount * _accSporePerShare) / 1e12 - user.rewardDebt;
+        return 
+            (user.amount * tempAccSporePerShare) / PRECISION_FACTOR 
+            - user.rewardDebt;
     }
 
     /**
-     * @dev Stake LP tokens
+     * @notice Stake LP tokens
+     * @param _amount Amount of LP tokens to stake
      */
-    function stake(uint256 _amount) external nonReentrant updateReward {
-        require(_amount > 0, "Cannot stake 0");
+    function stake(uint256 _amount) external nonReentrant {
+        require(_amount > 0, "Cannot stake zero");
+        
+        updatePool();
         
         UserInfo storage user = userInfo[msg.sender];
         
         // Harvest existing rewards if any
         if (user.amount > 0) {
-            uint256 pending = (user.amount * accSporePerShare) / 1e12 - user.rewardDebt;
+            uint256 pending = 
+                (user.amount * accSporePerShare) / PRECISION_FACTOR 
+                - user.rewardDebt;
+            
             if (pending > 0) {
                 sporeToken.safeTransfer(msg.sender, pending);
                 emit Harvest(msg.sender, pending);
@@ -106,7 +119,7 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
 
         // Update user state
         user.amount += _amount;
-        user.rewardDebt = (user.amount * accSporePerShare) / 1e12;
+        user.rewardDebt = (user.amount * accSporePerShare) / PRECISION_FACTOR;
         user.lastStakeTime = block.timestamp;
         
         // Update global state
@@ -119,14 +132,20 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Unstake LP tokens
+     * @notice Unstake LP tokens
+     * @param _amount Amount of LP tokens to unstake
      */
-    function unstake(uint256 _amount) external nonReentrant updateReward {
+    function unstake(uint256 _amount) external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "Insufficient balance");
         
+        updatePool();
+        
         // Harvest rewards
-        uint256 pending = (user.amount * accSporePerShare) / 1e12 - user.rewardDebt;
+        uint256 pending = 
+            (user.amount * accSporePerShare) / PRECISION_FACTOR 
+            - user.rewardDebt;
+        
         if (pending > 0) {
             sporeToken.safeTransfer(msg.sender, pending);
             emit Harvest(msg.sender, pending);
@@ -134,7 +153,7 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
         
         // Update user state
         user.amount -= _amount;
-        user.rewardDebt = (user.amount * accSporePerShare) / 1e12;
+        user.rewardDebt = (user.amount * accSporePerShare) / PRECISION_FACTOR;
         
         // Update global state
         totalStaked -= _amount;
@@ -146,32 +165,37 @@ contract EnokiLPStaking is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Harvest SPORE rewards without unstaking
+     * @notice Harvest SPORE rewards without unstaking
      */
-    function harvest() external nonReentrant updateReward {
+    function harvest() external nonReentrant {
+        updatePool();
+        
         UserInfo storage user = userInfo[msg.sender];
-        uint256 pending = (user.amount * accSporePerShare) / 1e12 - user.rewardDebt;
+        uint256 pending = 
+            (user.amount * accSporePerShare) / PRECISION_FACTOR 
+            - user.rewardDebt;
         
         require(pending > 0, "No rewards to harvest");
         
-        user.rewardDebt = (user.amount * accSporePerShare) / 1e12;
+        user.rewardDebt = (user.amount * accSporePerShare) / PRECISION_FACTOR;
         sporeToken.safeTransfer(msg.sender, pending);
         
         emit Harvest(msg.sender, pending);
     }
 
     /**
-     * @dev Update SPORE reward rate
-     * Can only be called by owner (DAO)
+     * @notice Update SPORE reward rate
+     * @param _sporePerSecond New reward rate per second
      */
-    function setRewardRate(uint256 _sporePerSecond) external onlyOwner updateReward {
+    function setRewardRate(uint256 _sporePerSecond) external onlyOwner {
+        updatePool();
         sporePerSecond = _sporePerSecond;
         emit RateUpdated(_sporePerSecond);
     }
 
     /**
-     * @dev Emergency withdraw function
-     * Forfeits rewards but returns LP tokens
+     * @notice Emergency withdraw function
+     * @dev Forfeits rewards but returns LP tokens
      */
     function emergencyWithdraw() external nonReentrant {
         UserInfo storage user = userInfo[msg.sender];

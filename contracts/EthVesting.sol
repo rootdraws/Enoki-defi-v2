@@ -1,120 +1,151 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
-
-/**
-* @title EthVesting
-* @dev Contract that implements a vesting schedule for ETH distribution
-* Key features:
-* - Linear vesting schedule with cliff period
-* - Backup beneficiary system
-* - Safety measures against timestamp manipulation
-* - Linear release of ETH over time to Developers or DAO.
-*/
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
+/**
+ * @title EthVesting
+ * @notice Contract implementing a linear vesting schedule for ETH distribution
+ * @dev Features:
+ * - Linear vesting with cliff period
+ * - Backup beneficiary system
+ * - Protection against timestamp manipulation
+ * - Linear ETH release to Developers or DAO
+ */
 contract EthVesting {
+    // Events for tracking distributions and deposits
+    event EthReleased(uint256 amount);
+    event EthReleasedBackup(uint256 amount);
+    event PaymentReceived(address indexed from, uint256 amount);
 
-   // Events for tracking distributions and deposits
-   event EthReleased(uint256 amount);             // Emitted when ETH is released to primary beneficiary
-   event EthReleasedBackup(uint256 amount);       // Emitted when ETH is released to backup beneficiary
-   event PaymentReceived(address from, uint256 amount); // Emitted when ETH is received
+    // Core state variables
+    address payable private immutable _beneficiary;
+    address payable private immutable _backupBeneficiary;
+    uint256 private immutable _cliff;
+    uint256 private immutable _start;
+    uint256 private immutable _duration;
+    uint256 private immutable _backupReleaseGracePeriod;
+    uint256 private _released;
 
-   // Core state variables
-   address payable private _beneficiary;          // Primary recipient of vested ETH
-   address payable private _backupBeneficiary;    // Backup recipient if primary doesn't claim
-   uint256 private _cliff;                        // Timestamp when vesting begins
-   uint256 private _start;                        // Start timestamp of vesting period
-   uint256 private _duration;                     // Duration of entire vesting period
-   uint256 private _backupReleaseGracePeriod;    // Grace period before backup can claim
-   uint256 private _released;                     // Amount of ETH already released
+    /**
+     * @notice Constructor sets up vesting schedule parameters
+     * @param beneficiary Primary recipient of vested ETH
+     * @param backupBeneficiary Backup recipient if primary doesn't claim
+     * @param start Timestamp when vesting begins
+     * @param cliffDuration Duration before any ETH can be claimed (in seconds)
+     * @param duration Total vesting duration (in seconds)
+     * @param backupReleaseGracePeriod Grace period before backup can claim (in seconds)
+     */
+    constructor(
+        address payable beneficiary,
+        address payable backupBeneficiary,
+        uint256 start,
+        uint256 cliffDuration,
+        uint256 duration,
+        uint256 backupReleaseGracePeriod
+    ) {
+        // Validation
+        require(beneficiary != address(0), "Beneficiary cannot be zero address");
+        require(backupBeneficiary != address(0), "Backup beneficiary cannot be zero address");
+        require(cliffDuration <= duration, "Cliff duration exceeds vesting duration");
+        require(duration > 0, "Vesting duration must be greater than zero");
+        require(start + duration > block.timestamp, "Final time is before current time");
 
-   /**
-    * @dev Constructor sets up vesting schedule parameters
-    * @param beneficiary Primary recipient of vested ETH
-    * @param backupBeneficiary Backup recipient if primary doesn't claim
-    * @param start Timestamp when vesting begins
-    * @param cliffDuration Duration before any ETH can be claimed (in seconds)
-    * @param duration Total vesting duration (in seconds)
-    * @param backupReleaseGracePeriod Grace period before backup can claim (in seconds)
-    */
-   constructor (
-       address payable beneficiary,
-       address payable backupBeneficiary,
-       uint256 start,
-       uint256 cliffDuration,
-       uint256 duration,
-       uint256 backupReleaseGracePeriod
-   ) public {
-       // Validation
-       require(beneficiary != address(0), "EthVesting: beneficiary is the zero address");
-       require(cliffDuration <= duration, "EthVesting: cliff is longer than duration");
-       require(duration > 0, "EthVesting: duration is 0");
-       require(start.add(duration) > block.timestamp, "EthVesting: final time is before current time");
+        // Set core parameters
+        _beneficiary = beneficiary;
+        _backupBeneficiary = backupBeneficiary;
+        _duration = duration;
+        _cliff = start + cliffDuration;
+        _start = start;
+        _backupReleaseGracePeriod = backupReleaseGracePeriod;
+    }
 
-       // Set core parameters
-       _beneficiary = beneficiary;
-       _backupBeneficiary = backupBeneficiary;
-       _duration = duration;
-       _cliff = start.add(cliffDuration);
-       _start = start;
-       _backupReleaseGracePeriod = backupReleaseGracePeriod;
-   }
+    /**
+     * @notice Release vested ETH to primary beneficiary
+     * @dev Calculates and transfers available ETH based on vesting schedule
+     */
+    function release() public {
+        uint256 unreleased = _releasableAmount();
+        require(unreleased > 0, "No ETH is due");
 
-   // Getter functions for contract parameters...
+        _released += unreleased;
+        (bool success, ) = _beneficiary.call{value: unreleased}("");
+        require(success, "ETH transfer failed");
 
-   /**
-    * @dev Main function for releasing vested ETH to beneficiary
-    * Calculates and transfers available ETH based on vesting schedule
-    */
-   function release() public {
-       uint256 unreleased = _releasableAmount();
-       require(unreleased > 0, "EthVesting: no eth is due");
+        emit EthReleased(unreleased);
+    }
 
-       _released = _released.add(unreleased);
-       _beneficiary.transfer(unreleased);
+    /**
+     * @notice Calculate releasable ETH amount
+     * @return Amount of ETH that can be released
+     */
+    function _releasableAmount() private view returns (uint256) {
+        return _vestedAmount() - _released;
+    }
 
-       emit EthReleased(unreleased);
-   }
+    /**
+     * @notice Calculate total vested ETH amount
+     * @return Amount of ETH that has vested
+     */
+    function _vestedAmount() private view returns (uint256) {
+        uint256 currentBalance = address(this).balance;
+        uint256 totalBalance = currentBalance + _released;
 
-   /**
-    * @dev Calculates amount of ETH that has vested but hasn't been released
-    */
-   function _releasableAmount() private view returns (uint256) {
-       return _vestedAmount().sub(_released);
-   }
+        if (block.timestamp < _cliff) {
+            return 0;
+        } else if (block.timestamp >= _start + _duration) {
+            return totalBalance;
+        } else {
+            return (totalBalance * (block.timestamp - _start)) / _duration;
+        }
+    }
 
-   /**
-    * @dev Calculates total amount of ETH that has vested based on time
-    */
-   function _vestedAmount() private view returns (uint256) {
-       uint256 currentBalance = address(this).balance;
-       uint256 totalBalance = currentBalance.add(_released);
+    /**
+     * @notice Allow backup beneficiary to claim ETH after grace period
+     * @dev Only callable after vesting period and grace period
+     */
+    function backupRelease() public {
+        require(
+            block.timestamp >= _start + _duration + _backupReleaseGracePeriod, 
+            "Backup release not yet available"
+        );
+        
+        uint256 balance = address(this).balance;
+        (bool success, ) = _backupBeneficiary.call{value: balance}("");
+        require(success, "Backup ETH transfer failed");
 
-       if (block.timestamp < _cliff) {
-           return 0;
-       } else if (block.timestamp >= _start.add(_duration)) {
-           return totalBalance;
-       } else {
-           return totalBalance.mul(block.timestamp.sub(_start)).div(_duration);
-       }
-   }
+        emit EthReleasedBackup(balance);
+    }
 
-   /**
-    * @dev Allows backup beneficiary to claim ETH after grace period
-    * Only callable after vesting period + grace period
-    */
-   function backupRelease() public {
-       require(block.timestamp >= _start.add(_duration).add(_backupReleaseGracePeriod));
-       _backupBeneficiary.transfer(address(this).balance);
+    /*
+     * @notice Retrieve beneficiary addresses and vesting details
+     * @return Beneficiary details
+     */
+    
+    function getVestingDetails() external view returns (
+        address primaryBeneficiary,
+        address backupBeneficiary,
+        uint256 start,
+        uint256 cliff,
+        uint256 duration,
+        uint256 released,
+        uint256 backupReleaseTime
+    ) {
+        return (
+            _beneficiary,
+            _backupBeneficiary,
+            _start,
+            _cliff,
+            _duration,
+            _released,
+            _start + _duration + _backupReleaseGracePeriod
+        );
+    }
 
-       emit EthReleasedBackup(address(this).balance);
-   }
-
-   /**
-    * @dev Allows contract to receive ETH
-    */
-   receive() external payable virtual {
-       emit PaymentReceived(msg.sender, msg.value);
-   }
+    /**
+     * @notice Allow contract to receive ETH
+     */
+    receive() external payable {
+        emit PaymentReceived(msg.sender, msg.value);
+    }
 }

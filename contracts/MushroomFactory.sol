@@ -1,26 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.20;
 
-/**
-* @title MushroomFactory
-* @dev Manages the creation and attributes of Mushroom NFTs
-* Each pool has its own factory to create mushrooms with specific traits
-* 
-* VRF Integration Points:
-* - Add Chainlink VRF for true randomness
-* - Replaces timestamp-based randomization
-* - More secure against miner manipulation
-
-MushroomFactory
-├── Species-specific factories
-├── NFT minting control
-├── Random trait generation
-└── Pool integration
-
-*/
-
-// Current imports
-import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -28,117 +8,134 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./MushroomNFT.sol";
 import "./MushroomLib.sol";
 
-// For VRF Integration:
-// import "@chainlink/contracts/src/v0.6/VRFConsumerBase.sol";
+/**
+ * @title MushroomFactory
+ * @notice Manages creation and attributes of Mushroom NFTs
+ * @dev Supports species-specific NFT minting with controlled randomization
+ * 
+ * Key Features:
+ * - Species-specific factories
+ * - NFT minting control
+ * - Pseudo-random trait generation
+ * - Pool integration
+ * 
+ * Future VRF Integration:
+ * - Chainlink VRF for true randomness
+ * - Improved security against manipulation
+ */
+contract MushroomFactory is Ownable {
+    using SafeERC20 for IERC20;
+    using MushroomLib for MushroomLib.MushroomData;
+    using MushroomLib for MushroomLib.MushroomType;
 
-contract MushroomFactory is Initializable, OwnableUpgradeSafe {
-   // For VRF:
-   // bytes32 internal keyHash;
-   // uint256 internal fee;
-   // mapping(bytes32 => address) public requestToSender;
-   // mapping(bytes32 => uint256) public requestToAmount;
-   // mapping(bytes32 => MushroomParams) public requestToParams;
+    // Events
+    event MushroomGrown(
+        address indexed recipient, 
+        uint256 id, 
+        uint256 species, 
+        uint256 lifespan
+    );
 
-   // struct MushroomParams {
-   //     uint256 minLifespan;
-   //     uint256 maxLifespan;
-   //     address recipient;
-   // }
+    // Core contract references
+    IERC20 public immutable sporeToken;
+    MushroomNFT public immutable mushroomNft;
 
-   using MushroomLib for MushroomLib.MushroomData;
-   using MushroomLib for MushroomLib.MushroomType;
-   using SafeMath for uint256;
+    // Minting parameters
+    uint256 public immutable costPerMushroom;
+    uint256 public immutable mySpecies;
 
-   event MushroomGrown(address recipient, uint256 id, uint256 species, uint256 lifespan);
-   // For VRF:
-   // event RandomnessRequested(bytes32 requestId, address sender);
-   // event RandomnessFulfilled(bytes32 requestId, uint256 randomness);
+    // Randomization counter
+    uint256 private _spawnCount;
 
-   IERC20 public sporeToken;
-   MushroomNFT public mushroomNft;
-   uint256 public costPerMushroom;
-   uint256 public mySpecies;
-   uint256 public spawnCount;
+    /**
+     * @notice Constructor sets up the Mushroom Factory
+     * @param _sporeToken SPORE token contract
+     * @param _mushroomNft Mushroom NFT contract
+     * @param _sporePool Address of the SPORE pool (initial owner)
+     * @param _costPerMushroom Cost to mint a mushroom
+     * @param _mySpecies Specific species for this factory
+     */
+    constructor(
+        IERC20 _sporeToken,
+        MushroomNFT _mushroomNft,
+        address _sporePool,
+        uint256 _costPerMushroom,
+        uint256 _mySpecies
+    ) Ownable(_sporePool) {
+        require(address(_sporeToken) != address(0), "Invalid SPORE token");
+        require(address(_mushroomNft) != address(0), "Invalid Mushroom NFT");
+        
+        sporeToken = _sporeToken;
+        mushroomNft = _mushroomNft;
+        costPerMushroom = _costPerMushroom;
+        mySpecies = _mySpecies;
+    }
 
-   function initialize(
-       IERC20 sporeToken_,
-       MushroomNFT mushroomNft_,
-       address sporePool_,
-       uint256 costPerMushroom_,
-       uint256 mySpecies_
-       // For VRF:
-       // address vrfCoordinator,
-       // address link,
-       // bytes32 keyHash_,
-       // uint256 fee_
-   ) public initializer {
-       __Ownable_init();
-       sporeToken = sporeToken_;
-       mushroomNft = mushroomNft_;
-       costPerMushroom = costPerMushroom_;
-       mySpecies = mySpecies_;
-       transferOwnership(sporePool_);
+    /**
+     * @notice Generate pseudo-random mushroom lifespan
+     * @param minLifespan Minimum possible lifespan
+     * @param maxLifespan Maximum possible lifespan
+     * @return Randomly generated lifespan
+     */
+    function _generateMushroomLifespan(
+        uint256 minLifespan, 
+        uint256 maxLifespan
+    ) internal returns (uint256) {
+        uint256 range = maxLifespan - minLifespan;
+        uint256 fromMin = uint256(
+            keccak256(abi.encodePacked(block.timestamp + _spawnCount))
+        ) % range;
+        _spawnCount += 1;
+        return minLifespan + fromMin;
+    }
 
-       // For VRF:
-       // keyHash = keyHash_;
-       // fee = fee_;
-       // Initialize VRF:
-       // VRFConsumerBase(vrfCoordinator, link)
-   }
+    /**
+     * @notice Check remaining mintable mushrooms for this species
+     * @return Number of mushrooms still available to mint
+     */
+    function getRemainingMintableForMySpecies() public view returns (uint256) {
+        return mushroomNft.getRemainingMintableForSpecies(mySpecies);
+    }
 
-   // Current randomization method
-   function _generateMushroomLifespan(uint256 minLifespan, uint256 maxLifespan) internal returns (uint256) {
-       uint256 range = maxLifespan.sub(minLifespan);
-       uint256 fromMin = uint256(keccak256(abi.encodePacked(block.timestamp.add(spawnCount)))) % range;
-       spawnCount = spawnCount.add(1);
-       return minLifespan.add(fromMin);
-   }
+    /**
+     * @notice Mint multiple mushrooms of this species
+     * @param recipient Address to receive the mushrooms
+     * @param numMushrooms Number of mushrooms to mint
+     */
+    function growMushrooms(
+        address recipient, 
+        uint256 numMushrooms
+    ) external onlyOwner {
+        // Retrieve species details
+        MushroomLib.MushroomType memory species = mushroomNft.getSpecies(mySpecies);
 
-   // VRF Version:
-   // function requestRandomLifespan(uint256 minLifespan, uint256 maxLifespan, address recipient) internal returns (bytes32) {
-   //     require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK");
-   //     bytes32 requestId = requestRandomness(keyHash, fee);
-   //     requestToSender[requestId] = msg.sender;
-   //     requestToParams[requestId] = MushroomParams(minLifespan, maxLifespan, recipient);
-   //     emit RandomnessRequested(requestId, msg.sender);
-   //     return requestId;
-   // }
+        // Validate minting capacity
+        require(
+            getRemainingMintableForMySpecies() >= numMushrooms, 
+            "Exceeds species minting cap"
+        );
 
-   // function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-   //     MushroomParams memory params = requestToParams[requestId];
-   //     uint256 range = params.maxLifespan.sub(params.minLifespan);
-   //     uint256 lifespan = params.minLifespan.add(randomness % range);
-   //     
-   //     uint256 nextId = mushroomNft.totalSupply().add(1);
-   //     mushroomNft.mint(params.recipient, nextId, mySpecies, lifespan);
-   //     emit MushroomGrown(params.recipient, nextId, mySpecies, lifespan);
-   //     emit RandomnessFulfilled(requestId, randomness);
-   // }
+        // Mint mushrooms
+        for (uint256 i = 0; i < numMushrooms; i++) {
+            uint256 nextId = mushroomNft.totalSupply() + 1;
+            uint256 lifespan = _generateMushroomLifespan(
+                species.minLifespan, 
+                species.maxLifespan
+            );
+            
+            mushroomNft.mint(recipient, nextId, mySpecies, lifespan);
+            
+            emit MushroomGrown(recipient, nextId, mySpecies, lifespan);
+        }
+    }
 
-   function getRemainingMintableForMySpecies() public view returns (uint256) {
-       return mushroomNft.getRemainingMintableForSpecies(mySpecies);
-   }
-
-   // Current minting method
-   function growMushrooms(address recipient, uint256 numMushrooms) public onlyOwner {
-       MushroomLib.MushroomType memory species = mushroomNft.getSpecies(mySpecies);
-
-       require(getRemainingMintableForMySpecies() >= numMushrooms, "MushroomFactory: Mushrooms to grow exceeds species cap");
-       for (uint256 i = 0; i < numMushrooms; i++) {
-           uint256 nextId = mushroomNft.totalSupply().add(1);
-           uint256 lifespan = _generateMushroomLifespan(species.minLifespan, species.maxLifespan);
-           mushroomNft.mint(recipient, nextId, mySpecies, lifespan);
-           emit MushroomGrown(recipient, nextId, mySpecies, lifespan);
-       }
-   }
-
-   // VRF Version:
-   // function growMushroomsVRF(address recipient, uint256 numMushrooms) public onlyOwner {
-   //     MushroomLib.MushroomType memory species = mushroomNft.getSpecies(mySpecies);
-   //     require(getRemainingMintableForMySpecies() >= numMushrooms, "Exceeds cap");
-   //     
-   //     for (uint256 i = 0; i < numMushrooms; i++) {
-   //         requestRandomLifespan(species.minLifespan, species.maxLifespan, recipient);
-   //     }
-   // }
+    /**
+     * @notice Optional method to collect any tokens accidentally sent to contract
+     * @param token Address of the token to collect
+     * @param amount Amount of tokens to collect
+     */
+    function collectDust(IERC20 token, uint256 amount) external onlyOwner {
+        require(token != sporeToken, "Cannot collect SPORE token");
+        token.safeTransfer(owner(), amount);
+    }
 }
