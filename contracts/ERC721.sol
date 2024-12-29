@@ -6,107 +6,78 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721Enumer
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 /**
  * @title ERC721UpgradeSafe
- * @notice Upgradeable ERC721 implementation for Mushroom NFTs
- * @dev Allows contract upgrades while preserving state and address
+ * @notice Upgradeable ERC721 implementation with enumeration and URI storage
  */
 abstract contract ERC721UpgradeSafe is 
-    Initializable, 
-    ERC721Upgradeable, 
-    ERC721EnumerableUpgradeable, 
+    Initializable,
+    ERC721Upgradeable,
+    ERC721EnumerableUpgradeable,
     ERC721URIStorageUpgradeable,
-    OwnableUpgradeable 
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable 
 {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
-     * @dev Initializer function for the upgradeable NFT contract
-     * @param name Name of the NFT collection
-     * @param symbol Symbol for the NFT collection
+     * @notice Initializes the upgradeable NFT contract
+     * @param name Collection name
+     * @param symbol Collection symbol
      */
     function __ERC721UpgradeSafe_init(
-        string memory name, 
+        string memory name,
         string memory symbol
     ) internal onlyInitializing {
-        __Initializable_init();
         __ERC721_init(name, symbol);
         __ERC721Enumerable_init();
         __ERC721URIStorage_init();
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
     }
 
     /**
-     * @dev Override required by multiple inheritance
+     * @dev Required override for ownership balance updates
      */
-    function _beforeTokenTransfer(
-        address from,
+    function _update(
         address to,
-        uint256 firstTokenId,
-        uint256 batchSize
-    ) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
-        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
+        uint256 tokenId,
+        address auth
+    ) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) returns (address) {
+        return super._update(to, tokenId, auth);
     }
 
     /**
-     * @dev Override tokenURI to use URIStorage implementation
+     * @notice Gets token URI
+     * @param tokenId Token to query
      */
-    function tokenURI(uint256 tokenId)
-        public
-        view
-        virtual
-        override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
-        returns (string memory)
-    {
+    function tokenURI(
+        uint256 tokenId
+    ) public view virtual override(
+        ERC721Upgradeable,
+        ERC721URIStorageUpgradeable
+    ) returns (string memory) {
         return ERC721URIStorageUpgradeable.tokenURI(tokenId);
     }
 
     /**
-     * @dev Override supportsInterface to resolve multiple inheritance
+     * @notice Interface support check
      */
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(
-            ERC721Upgradeable, 
-            ERC721EnumerableUpgradeable, 
-            ERC721URIStorageUpgradeable
-        )
-        returns (bool)
-    {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(
+        ERC721Upgradeable,
+        ERC721EnumerableUpgradeable,
+        ERC721URIStorageUpgradeable
+    ) returns (bool) {
         return 
             ERC721Upgradeable.supportsInterface(interfaceId) ||
             ERC721EnumerableUpgradeable.supportsInterface(interfaceId) ||
             ERC721URIStorageUpgradeable.supportsInterface(interfaceId);
-    }
-
-    /**
-     * @dev Safely mint a new token
-     * @param to Recipient of the token
-     * @param tokenId ID of the token to mint
-     * @param tokenUri Metadata URI for the token
-     */
-    function _safeMint(
-        address to, 
-        uint256 tokenId, 
-        string memory tokenUri
-    ) internal virtual {
-        super._safeMint(to, tokenId);
-        _setTokenURI(tokenId, tokenUri);
-    }
-
-    /**
-     * @dev Burn a token
-     * @param tokenId ID of the token to burn
-     */
-    function _burn(uint256 tokenId) 
-        internal 
-        virtual 
-        override(
-            ERC721Upgradeable, 
-            ERC721URIStorageUpgradeable
-        ) 
-    {
-        super._burn(tokenId);
     }
 }

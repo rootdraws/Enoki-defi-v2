@@ -1,11 +1,14 @@
 # Overview
 
 Deployment happens in two main stages:
+
 1. Core Protocol Deployment (Token infrastructure and economic base)
 2. Gameplay Mechanics (Pools, NFTs, and supporting systems)
 
-# Stage 1: Enoki Core
+## Stage 1: Enoki Core
+
 ## Prerequisites
+
 ```solidity
 // These addresses must exist before deployment
 address public daoAddress;        // Controls protocol

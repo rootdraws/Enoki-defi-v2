@@ -2,121 +2,118 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../../MushroomNFT.sol";
-import "../../MushroomLib.sol";
-import "./MetadataAdapter.sol";
+import "./IMetadataAdapter.sol";
+import "./BaseMetadataAdapter.sol";
 
-/**
- * @title MushroomAdapter
- * @dev Concrete implementation of MetadataAdapter for the MushroomNFT contract
- * 
- * This contract serves as a direct interface to the MushroomNFT contract,
- * handling metadata reading and lifespan modifications. It implements a fixed
- * forwarding mechanism that cannot be modified after initialization.
- *
- * Key features:
- * - Direct integration with MushroomNFT contract
- * - Fixed permission structure set at initialization
- * - All mushrooms are stakeable and burnable by default
- */
+// File Modernized by Claude.AI Sonnet on 12/29/24.
 
-/**
- * @dev The metadata-focused contracts work together to provide a flexible and modular system
- * for managing and accessing metadata for different types of NFTs (Non-Fungible Tokens).
- *
- * The main contracts involved are:
- *
- * 1. MetadataResolver:
- *    - Acts as a central hub and registry for metadata adapters.
- *    - Maps NFT contract addresses to their respective metadata adapter addresses.
- *    - Provides a standardized interface for accessing metadata across different NFT types.
- *    - Allows setting and updating metadata adapters for NFT contracts.
- *    - Implements role-based access control for admin and lifespan modification permissions.
- *
- * 2. MetadataAdapter (abstract):
- *    - Defines an abstract contract that serves as the interface for reading and modifying NFT metadata.
- *    - Contains functions for retrieving mushroom data, checking if an NFT is stakeable and burnable,
- *      and updating the lifespan of an NFT.
- *    - Implements role-based access control for lifespan modification permissions.
- *    - Emits events for lifespan updates.
- *
- * 3. MushroomAdapter (concrete):
- *    - A concrete implementation of the MetadataAdapter abstract contract.
- *    - Provides metadata adaptation specifically for the MushroomNFT contract.
- *    - Interacts directly with the MushroomNFT contract to retrieve and modify mushroom metadata.
- *    - Implements the functions defined in the MetadataAdapter abstract contract.
- *
- * The flow of metadata retrieval and modification works as follows:
- *
- * 1. The MetadataResolver contract acts as the entry point for accessing metadata.
- * 2. When a request for metadata is made, the MetadataResolver checks if a metadata adapter
- *    is registered for the corresponding NFT contract.
- * 3. If a metadata adapter is found, the MetadataResolver delegates the metadata request to
- *    the appropriate adapter contract (e.g., MushroomAdapter for MushroomNFT).
- * 4. The metadata adapter contract interacts with the specific NFT contract (e.g., MushroomNFT)
- *    to retrieve or modify the metadata based on the requested operation.
- * 5. The metadata is returned to the caller via the MetadataResolver contract.
- *
- * This modular architecture allows for flexibility and extensibility, as new metadata adapters
- * can be easily integrated for different NFT contracts without modifying the core MetadataResolver
- * contract. The use of abstract contracts and interfaces ensures a consistent and standardized
- * approach to metadata management across various NFT types.
- */
+contract MushroomAdapter is 
+    Initializable, 
+    ReentrancyGuardUpgradeable,
+    BaseMetadataAdapter {
 
-contract MushroomAdapter is Initializable, MetadataAdapter {
-    using MushroomLib for MushroomLib.MushroomData;
-    using MushroomLib for MushroomLib.MushroomType;
+   using MushroomLib for MushroomLib.MushroomData;
+   using MushroomLib for MushroomLib.MushroomType;
 
-    // Reference to the main MushroomNFT contract
-    MushroomNFT public mushroomNft;
+   /// @dev Reference to the main MushroomNFT contract
+   MushroomNFT private immutable _mushroomNft;
 
-    /**
-     * @dev Initializes the contract with NFT contract address and authorized forwarder
-     * @param nftContract_ Address of the MushroomNFT contract
-     * @param forwardActionsFrom_ Address authorized to modify lifespans
-     */
-    function initialize(address nftContract_, address forwardActionsFrom_) public initializer {
-        mushroomNft = MushroomNFT(nftContract_);
-        _setupRole(LIFESPAN_MODIFIER_ROLE, forwardActionsFrom_);
-    }
+   /**
+    * @dev Error thrown when NFT contract address is invalid
+    */
+   error InvalidNFTContract(address nftContract);
 
-    /**
-     * @dev Retrieves mushroom metadata from the MushroomNFT contract
-     * @param index The token ID to query
-     * @param data Unused in this implementation but required by interface
-     * @return MushroomData struct containing the mushroom's metadata
-     */
-    function getMushroomData(uint256 index, bytes calldata data) external view override returns (MushroomLib.MushroomData memory) {
-        return mushroomNft.getMushroomData(index);
-    }
+   /**
+    * @dev Error thrown when forwarder address is invalid
+    */
+   error InvalidForwarder(address forwarder);
 
-    /**
-     * @dev Always returns true as all mushrooms are stakeable in this implementation
-     * @param nftIndex Unused but required by interface
-     * @return bool Always returns true
-     */
-    function isStakeable(uint256 nftIndex) external pure override returns (bool) {
-        return true;
-    }
+   /**
+    * @dev Error thrown when lifespan update fails
+    */
+   error LifespanUpdateFailed(uint256 tokenId, uint256 lifespan);
 
-    /**
-     * @dev Always returns true as all mushrooms are burnable in this implementation
-     * @param index Unused but required by interface
-     * @return bool Always returns true
-     */
-    function isBurnable(uint256 index) external pure override returns (bool) {
-        return true;
-    }
+   /// @custom:oz-upgrades-unsafe-allow constructor
+   constructor() {
+       _disableInitializers();
+   }
 
-    /**
-     * @dev Forwards lifespan modification requests to the MushroomNFT contract
-     * @param index The token ID to modify
-     * @param lifespan The new lifespan value
-     * @param data Unused in this implementation but required by interface
-     */
-    function setMushroomLifespan(uint256 index, uint256 lifespan, bytes calldata data) external onlyLifespanModifier {
-        mushroomNft.setMushroomLifespan(index, lifespan);
-        emit LifespanUpdated(index, lifespan);
-    }
+   /**
+    * @notice Initializes the contract
+    * @param nftContract_ Address of the MushroomNFT contract
+    * @param forwardActionsFrom_ Address authorized to modify lifespans
+    */
+   function initialize(
+       address nftContract_,
+       address forwardActionsFrom_
+   ) external initializer {
+       if (nftContract_ == address(0)) revert InvalidNFTContract(nftContract_);
+       if (forwardActionsFrom_ == address(0)) revert InvalidForwarder(forwardActionsFrom_);
+       
+       __ReentrancyGuard_init();
+       
+       _mushroomNft = MushroomNFT(nftContract_);
+       _grantRole(LIFESPAN_MODIFIER_ROLE, forwardActionsFrom_);
+       _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+   }
+
+   /**
+    * @inheritdoc IMetadataAdapter
+    */
+   function getMushroomData(
+       uint256 index,
+       bytes calldata
+   ) external view override returns (MushroomLib.MushroomData memory) {
+       return _mushroomNft.getMushroomData(index);
+   }
+
+   /**
+    * @inheritdoc IMetadataAdapter
+    */
+   function isStakeable(
+       uint256
+   ) external pure override returns (bool) {
+       return true;
+   }
+
+   /**
+    * @inheritdoc IMetadataAdapter
+    */
+   function isBurnable(
+       uint256
+   ) external pure override returns (bool) {
+       return true;
+   }
+
+   /**
+    * @dev Internal implementation of lifespan update
+    */
+   function _setMushroomLifespan(
+       uint256 index,
+       uint256 lifespan,
+       bytes calldata
+   ) internal override nonReentrant {
+       try _mushroomNft.setMushroomLifespan(index, lifespan) {
+           // Success case handled by parent contract's event emission
+       } catch {
+           revert LifespanUpdateFailed(index, lifespan);
+       }
+   }
+
+   /**
+    * @notice Returns version number of the contract
+    */
+   function version() external pure returns (uint256) {
+       return 1;
+   }
+
+   /**
+    * @notice Checks if the contract is healthy
+    */
+   function isHealthy() external view returns (bool) {
+       return address(_mushroomNft) != address(0);
+   }
 }
