@@ -74,8 +74,11 @@ contract MetadataResolver is Initializable, AccessControl {
     // Role identifier for addresses authorized to modify mushroom lifespans
     bytes32 public constant LIFESPAN_MODIFIER_ROLE = keccak256("LIFESPAN_MODIFIER_ROLE");
 
-    // Emitted when a new metadata adapter is set for an NFT contract
+    // Emitted when a new metadata adapter is set for an NFT contract.
     event ResolverSet(address indexed nftContract, address resolver);
+    
+    // Emitted when Lifespan is updated.
+    event LifespanUpdated(address indexed nftContract, uint256 indexed nftIndex, uint256 lifespan);
 
     /**
      * @dev Ensures the NFT contract has a registered metadata adapter
@@ -90,8 +93,8 @@ contract MetadataResolver is Initializable, AccessControl {
      * @param initialLifespanModifier Address to receive lifespan modification rights
      */
     function initialize(address initialLifespanModifier) public initializer {
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(LIFESPAN_MODIFIER_ROLE, initialLifespanModifier);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(LIFESPAN_MODIFIER_ROLE, initialLifespanModifier);
     }
 
     /**
@@ -165,6 +168,7 @@ contract MetadataResolver is Initializable, AccessControl {
     ) external onlyWithMetadataAdapter(nftContract) onlyRole(LIFESPAN_MODIFIER_ROLE) {
         MetadataAdapter resolver = MetadataAdapter(metadataAdapters[nftContract]);
         resolver.setMushroomLifespan(nftIndex, lifespan, data);
+        
         emit LifespanUpdated(nftContract, nftIndex, lifespan);
     }
 
