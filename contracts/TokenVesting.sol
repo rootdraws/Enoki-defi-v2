@@ -67,7 +67,7 @@ contract TokenVesting is Ownable {
     * @param duration Total vesting period
     * @param revocable Can owner revoke unvested tokens
     */
-   constructor (address beneficiary, uint256 start, uint256 cliffDuration, uint256 duration, bool revocable) public {
+   constructor (address beneficiary, uint256 start, uint256 cliffDuration, uint256 duration, bool revocable) Ownable(msg.sender) public  {
        require(beneficiary != address(0), "TokenVesting: beneficiary is the zero address");
        require(cliffDuration <= duration, "TokenVesting: cliff is longer than duration");
        require(duration > 0, "TokenVesting: duration is 0");
