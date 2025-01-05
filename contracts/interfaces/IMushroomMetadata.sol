@@ -3,7 +3,8 @@ pragma solidity ^0.8.20;
 
 import "../MushroomLib.sol";
 
-// File Modernized by Claude.AI Sonnet on 12/29/24.
+// Now that the bottom contracts are all Modernized, we need to upgrade these Interfaces
+// Copy the bottom contracts, and then say, Create an interface for these please, here is the previous interface.
 
 /**
  * @title IMushroomMetadata

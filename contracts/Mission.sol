@@ -4,60 +4,78 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+// File Modernized by Claude.AI Sonnet on 1/5/25.
 
 /**
  * @title ModernMission
- * @notice Advanced SPORE token distribution controller
- * @dev Manages SPORE token distribution with enhanced security and flexibility
- * 
- * Core Features:
- * - Secure SPORE token distribution
- * - Granular pool access control
- * - Enhanced ownership management
- * - Comprehensive event tracking
+ * @notice Advanced SPORE token distribution controller with enhanced security
+ * @dev Manages SPORE token distribution with reentrancy protection and pause functionality
  */
-contract ModernMission is Ownable2Step {
+
+contract ModernMission is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
-    // Custom error types for gas-efficient error handling
-    error InvalidTokenAddress();
-    error InvalidPoolAddress();
-    error PoolAlreadyApproved();
-    error PoolNotApproved();
-    error InvalidRecipient();
-    error InsufficientBalance();
+    // Custom errors with descriptive parameters
+    error InvalidTokenAddress(address token);
+    error InvalidPoolAddress(address pool);
+    error PoolAlreadyApproved(address pool);
+    error PoolNotApproved(address pool);
+    error InvalidRecipient(address recipient);
+    error InsufficientBalance(uint256 requested, uint256 available);
+    error InvalidAmount();
+    error ZeroAddress();
 
     // Struct for extended pool information
     struct PoolInfo {
         bool isApproved;
         uint256 totalHarvested;
         uint256 lastHarvestTime;
+        uint256 harvestCount;    // Added: Track number of harvests
+        uint256 maxBatchSize;    // Added: Optional maximum harvest size
     }
 
     // Core state variables
     IERC20 public immutable sporeToken;
     
-    // Enhanced pool tracking
-    mapping(address => PoolInfo) private _poolRegistry;
+    // Enhanced pool tracking with explicit mapping names
+    mapping(address pool => PoolInfo info) private _poolRegistry;
     
     // Global harvest tracking
     uint256 private _totalHarvestedSpores;
+    uint256 private _globalHarvestCount;
 
     // Events with comprehensive information
     event PoolApproved(
-        address indexed pool, 
-        address indexed approver, 
+        address indexed pool,
+        address indexed approver,
+        uint256 maxBatchSize,
         uint256 timestamp
     );
     event PoolRevoked(
-        address indexed pool, 
-        address indexed revoker, 
+        address indexed pool,
+        address indexed revoker,
+        uint256 totalHarvested,
         uint256 timestamp
     );
     event SporesHarvested(
-        address indexed pool, 
-        address indexed recipient, 
-        uint256 amount, 
+        address indexed pool,
+        address indexed recipient,
+        uint256 amount,
+        uint256 harvestCount,
+        uint256 timestamp
+    );
+    event PoolLimitUpdated(
+        address indexed pool,
+        uint256 oldLimit,
+        uint256 newLimit,
+        uint256 timestamp
+    );
+    event EmergencyAction(
+        string indexed action,
+        address indexed target,
         uint256 timestamp
     );
 
@@ -65,18 +83,36 @@ contract ModernMission is Ownable2Step {
      * @notice Constructor initializes the Mission contract
      * @param _sporeToken Address of the SPORE token contract
      */
-    constructor(IERC20 _sporeToken) Ownable2Step() {
-        if (address(_sporeToken) == address(0)) revert InvalidTokenAddress();
+    constructor(IERC20 _sporeToken) Ownable(msg.sender) {
+        if (address(_sporeToken) == address(0)) revert ZeroAddress();
         sporeToken = _sporeToken;
     }
 
-    /**
-     * @notice Check if a pool is approved
+     /**
+     * @notice Check if a pool is approved and get its info
      * @param pool Address of the pool to check
-     * @return Pool approval status and additional details
+     * @return isApproved Whether the pool is approved
+     * @return totalHarvested Total amount harvested by this pool
+     * @return lastHarvestTime Timestamp of the last harvest
+     * @return harvestCount Number of harvests performed
+     * @return maxBatchSize Maximum allowed harvest amount (0 for unlimited)
      */
-    function getPoolInfo(address pool) external view returns (PoolInfo memory) {
-        return _poolRegistry[pool];
+
+    function getPoolInfo(address pool) external view returns (
+        bool isApproved,
+        uint256 totalHarvested,
+        uint256 lastHarvestTime,
+        uint256 harvestCount,
+        uint256 maxBatchSize
+    ) {
+        PoolInfo memory info = _poolRegistry[pool];
+        return (
+            info.isApproved,
+            info.totalHarvested,
+            info.lastHarvestTime,
+            info.harvestCount,
+            info.maxBatchSize
+        );
     }
 
     /**
@@ -84,43 +120,73 @@ contract ModernMission is Ownable2Step {
      * @param recipient Address to receive SPORE tokens
      * @param amount Amount of SPORE to transfer
      */
-    function sendSpores(address recipient, uint256 amount) external {
-        // Validate pool and recipient
-        PoolInfo storage poolInfo = _poolRegistry[msg.sender];
-        if (!poolInfo.isApproved) revert PoolNotApproved();
-        if (recipient == address(0)) revert InvalidRecipient();
+    function sendSpores(
+        address recipient,
+        uint256 amount
+    ) external nonReentrant whenNotPaused {
+        // Validate inputs
+        if (recipient == address(0)) revert InvalidRecipient(recipient);
+        if (amount == 0) revert InvalidAmount();
         
+        // Validate pool
+        PoolInfo storage poolInfo = _poolRegistry[msg.sender];
+        if (!poolInfo.isApproved) revert PoolNotApproved(msg.sender);
+        
+        // Check batch size limit if set
+        if (poolInfo.maxBatchSize > 0 && amount > poolInfo.maxBatchSize) {
+            revert InsufficientBalance(amount, poolInfo.maxBatchSize);
+        }
+
         // Check contract balance
         uint256 currentBalance = sporeToken.balanceOf(address(this));
-        if (amount > currentBalance) revert InsufficientBalance();
+        if (amount > currentBalance) {
+            revert InsufficientBalance(amount, currentBalance);
+        }
 
-        // Update pool and global harvest tracking
-        poolInfo.totalHarvested += amount;
+        // Update state before transfer
+        unchecked {
+            // Safe as these values cannot practically overflow
+            poolInfo.totalHarvested += amount;
+            poolInfo.harvestCount++;
+            _totalHarvestedSpores += amount;
+            _globalHarvestCount++;
+        }
+        
         poolInfo.lastHarvestTime = block.timestamp;
-        _totalHarvestedSpores += amount;
 
-        // Perform token transfer
+        // Perform transfer
         sporeToken.safeTransfer(recipient, amount);
 
-        emit SporesHarvested(msg.sender, recipient, amount, block.timestamp);
+        emit SporesHarvested(
+            msg.sender,
+            recipient,
+            amount,
+            poolInfo.harvestCount,
+            block.timestamp
+        );
     }
 
     /**
      * @notice Owner can approve pools to request SPORE
      * @param pool Address of pool to approve
-     * @param initialAllowance Optional initial harvest allowance
+     * @param maxBatchSize Maximum amount per harvest (0 for unlimited)
      */
-    function approvePool(address pool, uint256 initialAllowance) external onlyOwner {
-        if (pool == address(0)) revert InvalidPoolAddress();
-        if (_poolRegistry[pool].isApproved) revert PoolAlreadyApproved();
+    function approvePool(
+        address pool,
+        uint256 maxBatchSize
+    ) external onlyOwner {
+        if (pool == address(0)) revert ZeroAddress();
+        if (_poolRegistry[pool].isApproved) revert PoolAlreadyApproved(pool);
         
         _poolRegistry[pool] = PoolInfo({
             isApproved: true,
             totalHarvested: 0,
-            lastHarvestTime: block.timestamp
+            lastHarvestTime: block.timestamp,
+            harvestCount: 0,
+            maxBatchSize: maxBatchSize
         });
 
-        emit PoolApproved(pool, msg.sender, block.timestamp);
+        emit PoolApproved(pool, msg.sender, maxBatchSize, block.timestamp);
     }
 
     /**
@@ -128,42 +194,82 @@ contract ModernMission is Ownable2Step {
      * @param pool Address of pool to revoke
      */
     function revokePool(address pool) external onlyOwner {
-        if (!_poolRegistry[pool].isApproved) revert PoolNotApproved();
+        PoolInfo memory poolInfo = _poolRegistry[pool];
+        if (!poolInfo.isApproved) revert PoolNotApproved(pool);
         
+        uint256 totalHarvested = poolInfo.totalHarvested;
         delete _poolRegistry[pool];
-        emit PoolRevoked(pool, msg.sender, block.timestamp);
+        
+        emit PoolRevoked(pool, msg.sender, totalHarvested, block.timestamp);
     }
 
     /**
-     * @notice Retrieve the contract's SPORE token balance
-     * @return Current SPORE token balance
+     * @notice Update pool's maximum batch size
+     * @param pool Pool address to update
+     * @param newMaxBatchSize New maximum batch size (0 for unlimited)
+     */
+    function updatePoolLimit(
+        address pool,
+        uint256 newMaxBatchSize
+    ) external onlyOwner {
+        PoolInfo storage poolInfo = _poolRegistry[pool];
+        if (!poolInfo.isApproved) revert PoolNotApproved(pool);
+
+        uint256 oldLimit = poolInfo.maxBatchSize;
+        poolInfo.maxBatchSize = newMaxBatchSize;
+
+        emit PoolLimitUpdated(pool, oldLimit, newMaxBatchSize, block.timestamp);
+    }
+
+    /**
+     * @notice Emergency pause of all operations
+     */
+    function pause() external onlyOwner {
+        _pause();
+        emit EmergencyAction("PAUSE", address(0), block.timestamp);
+    }
+
+    /**
+     * @notice Resume operations after pause
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+        emit EmergencyAction("UNPAUSE", address(0), block.timestamp);
+    }
+
+    /**
+     * @notice View functions for contract state
      */
     function getSporeBalance() external view returns (uint256) {
         return sporeToken.balanceOf(address(this));
     }
 
-    /**
-     * @notice Get total SPORE tokens harvested across all pools
-     * @return Total harvested SPORE tokens
-     */
     function getTotalHarvestedSpores() external view returns (uint256) {
         return _totalHarvestedSpores;
     }
 
+    function getGlobalHarvestCount() external view returns (uint256) {
+        return _globalHarvestCount;
+    }
+
     /**
-     * @notice Allow owner to rescue stuck tokens
+     * @notice Allow owner to rescue stuck tokens (except SPORE)
      * @param token Token to rescue
      * @param amount Amount of tokens to rescue
      * @param recipient Recipient of rescued tokens
      */
     function rescueTokens(
-        IERC20 token, 
-        uint256 amount, 
+        IERC20 token,
+        uint256 amount,
         address recipient
-    ) external onlyOwner {
-        // Prevent rescuing the SPORE token
-        if (token == sporeToken) revert InvalidTokenAddress();
+    ) external onlyOwner nonReentrant {
+        if (address(token) == address(0) || recipient == address(0)) {
+            revert ZeroAddress();
+        }
+        if (token == sporeToken) revert InvalidTokenAddress(address(token));
+        if (amount == 0) revert InvalidAmount();
         
         token.safeTransfer(recipient, amount);
+        emit EmergencyAction("RESCUE", address(token), block.timestamp);
     }
 }

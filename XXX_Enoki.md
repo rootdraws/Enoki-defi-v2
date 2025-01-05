@@ -36,7 +36,7 @@ Each mushroom has the following properties:
 
 ## Enoki Club DAO
 
-An Aragon DAO that governs the Enoki system. The ENOKI token is the governance token of the Club DAO.
+A Tallyh DAO that governs the Enoki system. The ENOKI token is the governance token of the Club DAO.
 
 ## Architecture Diagrams
 

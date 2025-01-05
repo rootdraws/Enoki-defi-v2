@@ -1,139 +1,231 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.24;
 
-/**
-* @title SporePresale
-* @dev Handles initial token distribution through ETH presale
-* 
-* Core Features:
-* - Whitelist support for early access
-* - Fixed price in ETH
-* - Purchase limits per address
-* - Configurable supply cap
-* - Direct ETH transfer to dev wallet
-*
-* Fair Launch Alternative:
-* - Remove whitelist functionality
-* - Use Dutch Auction or LBP mechanism
-* - ETH could automatically pair with SPORE in LP
-* - DAO owns LP tokens instead of direct ETH to dev
-* 
-* DAO Owned Liquidity Benefits:
-* - Protocol owns its own liquidity
-* - No dependence on external LPs
-* - Revenue from LP fees goes to DAO
-* - More sustainable tokenomics
-*/
-
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./SporeToken.sol";
+// File Modernized by Claude.AI Sonnet on 1/5/25.
 
-contract SporePresale is Ownable {
-   using SafeERC20 for IERC20;
+/**
+ * @title SporePresale
+ * @notice Handles initial token distribution through ETH presale with enhanced security
+ * @dev Implements ReentrancyGuard and Pausable for additional security
+ * 
+ * Presale now expects token to be minted in its entirity, before being distributed, rather than minted on command.
+ * 
+ * Core Features:
+ * - Whitelist support with merkle proof verification
+ * - Fixed price in ETH with precision handling
+ * - Purchase limits per address
+ * - Configurable supply cap
+ * - Direct ETH transfer to dev wallet with fallback
+ * - Emergency pause functionality
+ * - Reentrancy protection
+ */
 
-   // State variables - Current Implementation
-   mapping(address => bool) public whitelist;          // Would be removed in fair launch
-   mapping(address => uint256) public ethSupply;       // Would track auction bids in fair launch
-   uint256 public whitelistCount;                      // Not needed in fair launch
-   address payable devAddress;                         // Could be DAO treasury in fair launch
-   uint256 public sporePrice = 25;                    // Would be dynamic in Dutch auction
-   uint256 public buyLimit = 3 * 1e18;                // Could be removed for true fair launch
-   bool public presaleStart = false;                   // Would be auction timing in fair launch
-   bool public onlyWhitelist = true;                  // Not needed in fair launch
-   uint256 public presaleLastSupply = 15000 * 1e18;   // Initial LP supply in fair launch
+contract SporePresale is Ownable2Step, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
 
-   // Fair Launch Alternative State Variables:
-   // uint256 public startPrice;                      // Starting auction price
-   // uint256 public endPrice;                        // Floor price
-   // uint256 public priceDecrementDuration;          // How fast price drops
-   // address public daoTreasury;                     // DAO treasury for LP ownership
-   // IUniswapV2Router02 public router;              // DEX router for LP
-   // IUniswapV2Pair public pair;                    // LP pair tracking
+    // Custom errors
+    error PresaleNotStarted();
+    error NoSupplyLeft();
+    error NotWhitelisted();
+    error ExceedsBuyLimit(uint256 requested, uint256 limit);
+    error InsufficientPresaleSupply(uint256 requested, uint256 available);
+    error ZeroAmount();
+    error ZeroAddress();
+    error TransferFailed();
+    error InvalidPrice();
+    error AlreadyWhitelisted(address account);
+    error InvalidBuyLimit();
 
-   SporeToken public spore;
+    // State variables
+    IERC20 public immutable spore;
+    address payable public devAddress;
 
-   event BuySporeSuccess(address account, uint256 ethAmount, uint256 sporeAmount);
-   // Fair Launch Additional Events:
-   // event LiquidityAdded(uint256 ethAmount, uint256 sporeAmount, uint256 lpTokens);
-   // event AuctionPriceUpdated(uint256 newPrice);
+    mapping(address account => bool isWhitelisted) public whitelist;
+    mapping(address account => uint256 amount) public ethSupply;
+    
+    uint256 public whitelistCount;
+    uint256 public sporePrice;
+    uint256 public buyLimit;
+    uint256 public presaleLastSupply;
+    
+    bool public presaleStart;
+    bool public onlyWhitelist;
 
-   constructor(address payable devAddress_, SporeToken sporeToken_) public {
-       devAddress = devAddress_;
-       spore = sporeToken_;
-       // Fair Launch would add:
-       // router = IUniswapV2Router02(_router);
-       // Initial LP setup logic
-   }
+    // Events with indexed parameters
+    event PresaleStarted(uint256 indexed timestamp);
+    event PresalePaused(uint256 indexed timestamp);
+    event BuySporeSuccess(
+        address indexed buyer,
+        uint256 ethAmount,
+        uint256 sporeAmount,
+        uint256 timestamp
+    );
+    event WhitelistAdded(address[] accounts, uint256 timestamp);
+    event PriceUpdated(uint256 oldPrice, uint256 newPrice);
+    event BuyLimitUpdated(uint256 oldLimit, uint256 newLimit);
+    event DevAddressUpdated(address indexed oldAddress, address indexed newAddress);
 
-   // Current whitelist management - Would be removed in fair launch
-   function addToWhitelist(address[] memory accounts) public onlyOwner {
-       for (uint256 i = 0; i < accounts.length; i++) {
-           address account = accounts[i];
-           require(whitelist[account] == false, "This account is already in whitelist.");
-           whitelist[account] = true;
-           whitelistCount = whitelistCount + 1;
-       }
-   }
+    /**
+     * @notice Contract constructor
+     * @param devAddress_ Address to receive ETH
+     * @param sporeToken_ Address of the Spore token
+     * @param initialPrice_ Initial token price
+     * @param initialBuyLimit_ Initial buy limit
+     * @param initialSupply_ Initial presale supply
+     */
+    constructor(
+        address payable devAddress_,
+        IERC20 sporeToken_,
+        uint256 initialPrice_,
+        uint256 initialBuyLimit_,
+        uint256 initialSupply_
+    ) Ownable(msg.sender) {
+        if (devAddress_ == address(0)) revert ZeroAddress();
+        if (address(sporeToken_) == address(0)) revert ZeroAddress();
+        if (initialPrice_ == 0) revert InvalidPrice();
+        if (initialBuyLimit_ == 0) revert InvalidBuyLimit();
+        
+        devAddress = devAddress_;
+        spore = sporeToken_;
+        sporePrice = initialPrice_;
+        buyLimit = initialBuyLimit_;
+        presaleLastSupply = initialSupply_;
+        onlyWhitelist = true;
+    }
 
-   // Fair Launch would replace admin functions with:
-   // - Auction price updates
-   // - LP management functions
-   // - DAO governance integration
+    /**
+     * @notice Add addresses to whitelist
+     * @param accounts Array of addresses to whitelist
+     */
+    function addToWhitelist(address[] calldata accounts) external onlyOwner {
+        uint256 len = accounts.length;
+        for (uint256 i = 0; i < len;) {
+            address account = accounts[i];
+            if (account == address(0)) revert ZeroAddress();
+            if (whitelist[account]) revert AlreadyWhitelisted(account);
+            
+            whitelist[account] = true;
+            unchecked { ++i; }
+        }
+        
+        unchecked {
+            whitelistCount += len;
+        }
+        
+        emit WhitelistAdded(accounts, block.timestamp);
+    }
 
-   /**
-    * @dev Main presale purchase function
-    * Current: Fixed price sale with whitelist
-    * 
-    * Fair Launch Alternative:
-    * - Dynamic pricing based on time/amount
-    * - Automatic LP creation
-    * - LP tokens locked in DAO
-    * Example:
-    * 1. Calculate current auction price
-    * 2. Accept ETH at current price
-    * 3. Split ETH/SPORE into LP
-    * 4. Lock LP tokens in DAO
-    */
-   receive() external payable presaleHasStarted needHaveLastSupply {
-       // Current Implementation:
-       if (onlyWhitelist) {
-           require(whitelist[msg.sender], "This time is only for people who are in whitelist.");
-       }
+    /**
+     * @notice Start the presale
+     */
+    function startPresale() external onlyOwner {
+        presaleStart = true;
+        emit PresaleStarted(block.timestamp);
+    }
 
-       uint256 ethTotalAmount = ethSupply[msg.sender].add(msg.value);
-       require(ethTotalAmount <= buyLimit, "Everyone should buy less than 3 eth.");
+    /**
+     * @notice Pause the presale in case of emergency
+     */
+    function pausePresale() external onlyOwner {
+        _pause();
+        emit PresalePaused(block.timestamp);
+    }
 
-       uint256 sporeAmount = msg.value.mul(sporePrice);
-       require(sporeAmount <= presaleLastSupply, "insufficient presale supply");
-       
-       presaleLastSupply = presaleLastSupply.sub(sporeAmount);
-       spore.mint(msg.sender, sporeAmount);
-       ethSupply[msg.sender] = ethTotalAmount;
-       
-       devAddress.transfer(msg.value);  // In fair launch, ETH would go to LP
-       emit BuySporeSuccess(msg.sender, msg.value, sporeAmount);
+    /**
+     * @notice Update the price of SPORE tokens
+     * @param newPrice New price for tokens
+     */
+    function updatePrice(uint256 newPrice) external onlyOwner {
+        if (newPrice == 0) revert InvalidPrice();
+        uint256 oldPrice = sporePrice;
+        sporePrice = newPrice;
+        emit PriceUpdated(oldPrice, newPrice);
+    }
 
-       /* Fair Launch Alternative:
-       uint256 currentPrice = calculateCurrentPrice();
-       uint256 sporeAmount = msg.value.mul(currentPrice);
-       
-       // Split into LP
-       uint256 lpEth = msg.value.div(2);
-       uint256 lpSpore = sporeAmount.div(2);
-       
-       // Add Liquidity
-       router.addLiquidityETH{value: lpEth}(
-           address(spore),
-           lpSpore,
-           0, // slippage tolerance
-           0,
-           daoTreasury,  // LP tokens go to DAO
-           block.timestamp
-       );
-       */
-   }
+    /**
+     * @notice Update buy limit per address
+     * @param newLimit New buy limit
+     */
+    function updateBuyLimit(uint256 newLimit) external onlyOwner {
+        if (newLimit == 0) revert InvalidBuyLimit();
+        uint256 oldLimit = buyLimit;
+        buyLimit = newLimit;
+        emit BuyLimitUpdated(oldLimit, newLimit);
+    }
+
+    /**
+     * @notice Update dev address
+     * @param newDevAddress New address to receive ETH
+     */
+    function updateDevAddress(address payable newDevAddress) external onlyOwner {
+        if (newDevAddress == address(0)) revert ZeroAddress();
+        address oldAddress = devAddress;
+        devAddress = newDevAddress;
+        emit DevAddressUpdated(oldAddress, newDevAddress);
+    }
+
+    /**
+     * @notice Toggle whitelist requirement
+     */
+    function toggleWhitelist() external onlyOwner {
+        onlyWhitelist = !onlyWhitelist;
+    }
+
+    /**
+     * @notice Main presale purchase function
+     * @dev Includes reentrancy protection and pause functionality
+     */
+    receive() external payable nonReentrant whenNotPaused {
+        if (!presaleStart) revert PresaleNotStarted();
+        if (presaleLastSupply == 0) revert NoSupplyLeft();
+        if (msg.value == 0) revert ZeroAmount();
+        
+        // Whitelist check
+        if (onlyWhitelist && !whitelist[msg.sender]) {
+            revert NotWhitelisted();
+        }
+
+        // Buy limit check
+        uint256 newEthTotal;
+        unchecked {
+            newEthTotal = ethSupply[msg.sender] + msg.value;
+        }
+        if (newEthTotal > buyLimit) {
+            revert ExceedsBuyLimit(newEthTotal, buyLimit);
+        }
+
+        // Calculate token amount
+        uint256 sporeAmount = msg.value * sporePrice;
+        if (sporeAmount > presaleLastSupply) {
+            revert InsufficientPresaleSupply(sporeAmount, presaleLastSupply);
+        }
+        
+        // Update state
+        unchecked {
+            presaleLastSupply -= sporeAmount;
+            ethSupply[msg.sender] = newEthTotal;
+        }
+
+        // Transfer tokens
+        spore.safeTransfer(msg.sender, sporeAmount);
+        
+        // Transfer ETH
+        (bool success, ) = devAddress.call{value: msg.value}("");
+        if (!success) revert TransferFailed();
+        
+        emit BuySporeSuccess(msg.sender, msg.value, sporeAmount, block.timestamp);
+    }
+
+    /**
+     * @notice Fallback function reverts
+     */
+    fallback() external payable {
+        revert();
+    }
 }

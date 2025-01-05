@@ -21,6 +21,8 @@ Script Actions:
 - 2/3 of presale funds go to 6 months token vesting
 - 1/3 goes toward initial liquidity, will be sent directly to dev multisig for locking in Uni pool
 
+// This one above, needs to be adjusted.
+
 - Deploy Presale
 - Lock portion of SPORE supply in presale
 - Add all whitelist addresses from config, in batches

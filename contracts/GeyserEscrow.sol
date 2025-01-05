@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
+// File Modernized by Claude.AI Sonnet on 1/5/25.
+
 /**
  * @notice Interface for geyser functionality
  */
-
 interface IEnokiGeyser {
     function getDistributionToken() external view returns (IERC20);
     function lockTokens(uint256 amount, uint256 durationSec) external;
 }
-
-// Still has an Error.
 
 /**
  * @title GeyserEscrow
@@ -24,16 +23,15 @@ interface IEnokiGeyser {
  * @dev Enhanced escrow with multi-token support and safety features
  * @custom:security-contact security@example.com
  */
-
-contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
+contract GeyserEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     /// @notice Core state
     IEnokiGeyser public immutable geyser;
     
     /// @notice Token management
-    mapping(address => bool) private _allowedRewardTokens;
-    mapping(address => uint256) private _totalLocked;
+    mapping(address token => bool allowed) private _allowedRewardTokens;
+    mapping(address token => uint256 amount) private _totalLocked;
     uint256 private _lastLockTime;
 
     /// @notice Constants for validation
@@ -47,12 +45,14 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         address indexed token,
         uint256 amount,
         uint256 duration,
-        uint256 timestamp
+        uint256 lockTime,
+        uint256 unlockTime
     );
     
     event RewardTokenStatusChanged(
         address indexed token,
         bool indexed isAllowed,
+        address indexed operator,
         uint256 timestamp
     );
     
@@ -63,15 +63,22 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         uint256 timestamp
     );
 
-    /// @dev Custom errors
+    event EmergencyAction(
+        string indexed action,
+        address indexed initiator,
+        uint256 timestamp
+    );
+
+    /// @dev Custom errors with descriptive parameters
     error ZeroAddress();
     error InvalidAmount(uint256 provided, uint256 minimum);
     error InvalidDuration(uint256 provided, uint256 minimum, uint256 maximum);
     error TokenNotAllowed(address token);
-    error CooldownActive(uint256 remainingTime);
-    error LockFailed();
-    error ApprovalFailed();
-    error NoTokensToRecover();
+    error CooldownActive(uint256 currentTime, uint256 nextValidTime);
+    error LockFailed(address token, uint256 amount);
+    error ApprovalFailed(address token, uint256 amount);
+    error NoTokensToRecover(address token);
+    error InsufficientBalance(uint256 requested, uint256 available);
 
     /**
      * @notice Sets up the escrow with initial geyser connection
@@ -89,6 +96,7 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         emit RewardTokenStatusChanged(
             initialToken,
             true,
+            msg.sender,
             block.timestamp
         );
     }
@@ -109,19 +117,9 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         emit RewardTokenStatusChanged(
             tokenAddress,
             isAllowed,
+            msg.sender,
             block.timestamp
         );
-    }
-
-    /**
-     * @notice Checks if a token is allowed
-     * @param tokenAddress Token to check
-     * @return allowance status
-     */
-    function isRewardTokenAllowed(
-        address tokenAddress
-    ) external view returns (bool) {
-        return _allowedRewardTokens[tokenAddress];
     }
 
     /**
@@ -140,63 +138,64 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         if (durationSec < MIN_LOCK_DURATION || durationSec > MAX_LOCK_DURATION) {
             revert InvalidDuration(durationSec, MIN_LOCK_DURATION, MAX_LOCK_DURATION);
         }
-        if (block.timestamp < _lastLockTime + LOCK_COOLDOWN) {
-            revert CooldownActive(_lastLockTime + LOCK_COOLDOWN - block.timestamp);
+        
+        uint256 nextValidLockTime = _lastLockTime + LOCK_COOLDOWN;
+        if (block.timestamp < nextValidLockTime) {
+            revert CooldownActive(block.timestamp, nextValidLockTime);
         }
 
         // Get and validate distribution token
         IERC20 distributionToken = geyser.getDistributionToken();
-        if (!_allowedRewardTokens[address(distributionToken)]) {
-            revert TokenNotAllowed(address(distributionToken));
+        address tokenAddress = address(distributionToken);
+        
+        if (!_allowedRewardTokens[tokenAddress]) {
+            revert TokenNotAllowed(tokenAddress);
+        }
+
+        // Validate balance
+        uint256 balance = distributionToken.balanceOf(address(this));
+        if (amount > balance) {
+            revert InsufficientBalance(amount, balance);
         }
 
         // Update state before external calls
         _lastLockTime = block.timestamp;
-        _totalLocked[address(distributionToken)] += amount;
-
-        // Execute lock
-        // Reset approval to 0 first (safety measure for some tokens)
-        distributionToken.approve(address(geyser), 0);
-        
-        // Execute lock
-        distributionToken.approve(address(geyser), amount);
-        try geyser.lockTokens(amount, durationSec) {
-            emit TokensLocked(
-                address(distributionToken),
-                amount,
-                durationSec,
-                block.timestamp
-            );
-        } catch {
-            // Reset approval on failure
-            distributionToken.approve(address(geyser), 0);
-            revert LockFailed();
+        unchecked {
+            // Safe because we checked balance above
+            _totalLocked[tokenAddress] += amount;
         }
 
-     /**
+        // Reset approval first (safety measure for some tokens)
+        distributionToken.approve(address(geyser), 0);
+        distributionToken.approve(address(geyser), amount);
+
+        // Execute lock
+        try geyser.lockTokens(amount, durationSec) {
+            emit TokensLocked(
+                tokenAddress,
+                amount,
+                durationSec,
+                block.timestamp,
+                block.timestamp + durationSec
+            );
+        } catch {
+            // Reset approval and state on failure
+            distributionToken.approve(address(geyser), 0);
+            _totalLocked[tokenAddress] -= amount;
+            revert LockFailed(tokenAddress, amount);
+        }
+    }
+
+    /**
      * @notice Retrieves distribution token information
      * @return token Address of current distribution token
      * @return totalLocked Total amount locked for this token
      * @return lastLockTime Timestamp of last lock operation
      */
- /**
-     * @notice Retrieves distribution token information
-     * @return token Address of current distribution token
-     * @return totalLocked Total amount locked for this token
-     * @return lastLockTime Timestamp of last lock operation
-     */
-    function getDistributionDetails() external view returns (
-        address,
-        uint256,
-        uint256
-    ) {
+    function getDistributionDetails() external view returns (address, uint256, uint256) {
         address token = address(geyser.getDistributionToken());
         uint256 totalLocked = _totalLocked[token];
-        return (
-            token,
-            totalLocked,
-            _lastLockTime
-        );
+        return (token, totalLocked, _lastLockTime);
     }
 
     /**
@@ -209,36 +208,46 @@ contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
         IERC20 token,
         address recipient,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         if (address(token) == address(0)) revert ZeroAddress();
         if (recipient == address(0)) revert ZeroAddress();
         if (amount == 0) revert InvalidAmount(0, 1);
 
         uint256 balance = token.balanceOf(address(this));
-        if (balance == 0) revert NoTokensToRecover();
+        if (balance == 0) revert NoTokensToRecover(address(token));
+        if (amount > balance) revert InsufficientBalance(amount, balance);
 
-        uint256 recoveryAmount = amount > balance ? balance : amount;
-        token.safeTransfer(recipient, recoveryAmount);
+        token.safeTransfer(recipient, amount);
 
         emit TokensRecovered(
             address(token),
             recipient,
-            recoveryAmount,
+            amount,
             block.timestamp
         );
     }
 
     /**
-     * @notice Pause contract operations
+     * @notice View functions
      */
-    function pause() external onlyOwner {
-        _pause();
+    function isRewardTokenAllowed(address token) external view returns (bool) {
+        return _allowedRewardTokens[token];
+    }
+
+    function getTokenBalance(IERC20 token) external view returns (uint256) {
+        return token.balanceOf(address(this));
     }
 
     /**
-     * @notice Unpause contract operations
+     * @notice Emergency functions
      */
+    function pause() external onlyOwner {
+        _pause();
+        emit EmergencyAction("PAUSE", msg.sender, block.timestamp);
+    }
+
     function unpause() external onlyOwner {
         _unpause();
+        emit EmergencyAction("UNPAUSE", msg.sender, block.timestamp);
     }
 }

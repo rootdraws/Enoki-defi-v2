@@ -2,15 +2,24 @@
 
 ## MILESTONE 0: IMPORT
 
-### Migrations | Updates [This is being set up on Arbitrum Sepolia Testnet]
+### Modernization | Updates [This is being set up on Arbitrum Sepolia Testnet]
 
-- Modernizing with Claude, and then going through each of the original contracts, to make sure that all functions there, in each file, and they are also modernized. [CURRENT]
-
-- Replace all Univ2 with CamelotRouter.
-  - [CONTRACT](https://docs.camelot.exchange/contracts/arbitrum/sepolia-testnet)
+- Modernizing with Claude: [CURRENT]
+  - Modernize all xContracts.
+  - Check all metadata to make sure it works inconjunction with NFT Contracts.
+  - Correct all Interfaces, to make sure that they correlate with Contracts.
+- Minimalist pass through with Claude -- If there is a way to make the code more essential, and clear, then do it.
 - Remove all components of MiniMe Tokens, and replace with OpenZeppelin ERC20Votes, so that the project is compatible with Tally.
 - Enable transfer of ownership to the gnosis safe on tally, so that tally can take onchain actions.
 - Upgrade Randomizer to VRF Gelato
+- Consider upgrading these to incentivized 4626 Strategy Vaults, so Spore can be distributed for depositing within the 4626 Vault, and these can be LP Staking strategies that use Curve Pools, or Camelot Pools, or Compound Strategy Vaults.
+  - [Vaultcraft Repo](https://github.com/Popcorn-Limited) Uses Gelato for Automation.
+
+### Scripts
+
+- Modernize all Scripts - and make sure that they work with the contracts that have been updated.
+- Replace all Univ2 with CamelotRouter. [All of the Univ2 Code are in the Scripts.]
+  - [CONTRACT](https://docs.camelot.exchange/contracts/arbitrum/sepolia-testnet)
 
 ### Architecture | Flow
 
@@ -24,15 +33,8 @@
 3. An LP DAO which builds a popCORN position, to be able to extract Bribe Tokens from the Hidden Husk.
 4. There needs to be a mechanism to raise another round of BTCN, to pair with the Bribe Tokens from the Hidden Husk, so that the LP DAO could be expanded, and the artists involved can be supported by outreach grants to those other areas.
 
-TOKEN FLOW?
+LP or Strategy Vault Deposits → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
 
-ETH Staking → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
-
-The Flows ought to look like a DAO that builds more and more value for itself, and then directs that value toward these membership tokens.
-
-So, the NFT Art is ephermeral, and exists to distribute ENOKI, which is the membership token.
-On a Seasonal Timeline, the spores should turn all into ENOKI.
-The NFTs should turn into ENOKI.
 And ENOKI should vote to control the protocol, which is composed of:
 
 - SPORE - BTCN LP [This supply eventually gets burned, and is the source of new campaigns.]
@@ -51,13 +53,7 @@ You also need to solve how Contributors are going to be paid.
 
 Questions:
 
-- How does this structure reflect Based Rovers -- meaning, how is value pulled out?
 - Do you have built in pacing for Spore Distributions, which match Campaign Batch releases, so you can line up new campaigns?
-
-### Scripts | Tests
-
-- Translate all scripts from ts to js.
-- Translate all tests from ts to js.
 
 ## MILESTONE 1: LAUNCH ON ARBITRUM SEPOLIA
 

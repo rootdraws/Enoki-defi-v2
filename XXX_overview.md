@@ -34,13 +34,13 @@ PaymentSplitter splitter = new PaymentSplitter(
     [666, 333]
 );
 
-// Dev Fund Vesting
-// 6 month vesting for development funds
+// Dev Fund Vesting - 2 Year Linear
 TokenVesting devVesting = new TokenVesting(
     devMultisig,
     block.timestamp,
-    180 days, // 6 month cliff
-    180 days  // 6 month vest
+    730 days, // 24 month cliff
+    730 days  // 24 month vest
+// Need to modify this to be linear, no cliff. Match what TrueMarkets is doing.
 );
 
 ### Presale Setup

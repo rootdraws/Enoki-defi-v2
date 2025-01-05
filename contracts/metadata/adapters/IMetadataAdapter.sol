@@ -4,7 +4,8 @@ pragma solidity ^0.8.20;
 import "../../MushroomLib.sol";
 import "@openzeppelin/contracts/access/IAccessControl.sol";
 
-// File Modernized by Claude.AI Sonnet on 12/29/24.
+// Need to correct this, because the Lifepsan was structured differently.
+// Lifespan is now handled by the MushroomFactory.sol
 
 interface IMetadataAdapter is IAccessControl {
    /**

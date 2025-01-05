@@ -5,7 +5,8 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./IMetadataAdapter.sol";
 import "../../MushroomLib.sol";
 
-// File Modernized by Claude.AI Sonnet on 12/29/24.
+// Need to correct this, because the Lifepsan was structured differently.
+// Lifespan is now handled by the MushroomFactory.sol
 
 abstract contract BaseMetadataAdapter is IMetadataAdapter, AccessControl {
    using MushroomLib for MushroomLib.MushroomData;

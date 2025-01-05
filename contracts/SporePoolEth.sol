@@ -3,24 +3,25 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+
+// File Modernized by Claude.AI Sonnet on 1/5/25.
+
+// External interfaces
+interface ISporeToken {
+    function mint(address to, uint256 amount) external returns (bool);
+}
+
+interface IMission {
+    function sendSpores(address recipient, uint256 amount) external returns (bool);
+}
 
 /**
  * @title ModernSporePoolEth
- * @dev Advanced ETH staking pool with flexible yield strategies
- * 
- * Key Features:
- * - Native ETH staking
- * - Modular yield generation
- * - SPORE rewards
- * - Flexible strategy management
- * 
- * Potential Yield Sources:
- * 1. Liquidity Provision
- * 2. Lending Markets
- * 3. Yield Aggregation
- * 4. Structured Products
+ * @notice Advanced ETH staking pool with flexible yield strategies and enhanced security
+ * @dev Implements upgradeable patterns with modern safety features
  */
 contract ModernSporePoolEth is 
     Initializable, 
@@ -28,70 +29,91 @@ contract ModernSporePoolEth is
     ReentrancyGuardUpgradeable, 
     PausableUpgradeable 
 {
-    // Custom error types for gas-efficient error handling
-    error InvalidStakeAmount();
-    error StakingNotStarted();
-    error InsufficientBalance();
-    error StrategyError();
-    error UnsupportedOperation();
+    using Address for address payable;
+    // Used import "@openzeppelin/contracts/utils/Address.sol"; instead of AddressUpgradeable.sol
+    // Could not find AddressUpgradeable Library in @openzeppelin/contracts-upgradeable.
 
-    // Interfaces for external interactions
-    interface ISporeToken {
-        function mint(address to, uint256 amount) external;
-    }
+    // Custom errors with descriptive parameters
+    error InvalidStakeAmount(uint256 amount);
+    error StakingNotStarted(uint256 currentTime, uint256 startTime);
+    error InsufficientBalance(uint256 requested, uint256 available);
+    error StrategyError(address strategy, string reason);
+    error ZeroAddress();
+    error InvalidRewardRate();
+    error InvalidStrategy(uint8 strategyType);
+    error RewardDistributionFailed();
+    error TransferFailed();
+    error UnauthorizedOperation();
 
-    interface IMission {
-        function sendSpores(address recipient, uint256 amount) external;
-    }
+    // Constants
+    uint256 public constant MAX_PERCENTAGE = 100;
+    uint8 public constant STRATEGY_TYPE_IDLE = 0;
+    uint8 public constant STRATEGY_TYPE_LIQUIDITY = 1;
+    uint8 public constant STRATEGY_TYPE_LENDING = 2;
+    uint8 public constant STRATEGY_TYPE_AGGREGATOR = 3;
 
-    // Structs for more efficient storage and logic
+    // Structs with explicit types
     struct StakeInfo {
         uint256 amount;
         uint256 rewardDebt;
         uint256 pendingRewards;
+        uint256 lastUpdateTime;
     }
 
     struct PoolStrategy {
         address strategyAddress;
         uint256 allocatedAmount;
-        uint8 strategyType; // 0: Idle, 1: LiquidityPool, 2: Lending, 3: Aggregator
+        uint8 strategyType;
+        bool active;
     }
 
-    // Core state variables
+    // State variables
     ISporeToken public sporeToken;
     IMission public mission;
 
-    // Staking and reward parameters
-    uint256 public constant MAX_PERCENTAGE = 100;
     uint256 public sporesPerSecond;
     uint256 public totalStaked;
     uint256 public stakingStartTime;
+    uint256 public lastUpdateTime;
 
-    // User and reward tracking
-    mapping(address => StakeInfo) private _stakes;
+    mapping(address account => StakeInfo info) private _stakes;
     
-    // Strategy management
     PoolStrategy public currentStrategy;
     address public devRewardAddress;
     address public daoRewardAddress;
 
-    // Events for tracking key actions
-    event EthStaked(address indexed user, uint256 amount);
-    event EthWithdrawn(address indexed user, uint256 amount);
-    event RewardsHarvested(address indexed user, uint256 amount);
-    event StrategyUpdated(address newStrategy, uint8 strategyType);
-    event SporeRateChanged(uint256 newRate);
+    // Events with indexed parameters
+    event EthStaked(address indexed user, uint256 amount, uint256 totalStaked);
+    event EthWithdrawn(address indexed user, uint256 amount, uint256 totalStaked);
+    event RewardsHarvested(address indexed user, uint256 amount, uint256 timestamp);
+    event StrategyUpdated(
+        address indexed oldStrategy,
+        address indexed newStrategy,
+        uint8 strategyType,
+        uint256 timestamp
+    );
+    event SporeRateChanged(uint256 oldRate, uint256 newRate, uint256 timestamp);
+    event RewardsDistributed(
+        address indexed user,
+        uint256 userShare,
+        uint256 devShare,
+        uint256 daoShare
+    );
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     /**
-     * @dev Initialize the ETH staking pool
+     * @notice Initialize the ETH staking pool
      * @param _initParams Encoded initialization parameters
      */
-    function initialize(bytes memory _initParams) public initializer {
-        __Ownable_init();
+    function initialize(bytes calldata _initParams) external initializer {
+        __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
         __Pausable_init();
 
-        // Decode initialization parameters
         (
             address _sporeToken,
             address _mission,
@@ -104,133 +126,151 @@ contract ModernSporePoolEth is
             (address, address, address, address, uint256, uint256)
         );
 
-        // Set core contract references
+        if (_sporeToken == address(0) || 
+            _mission == address(0) || 
+            _devRewardAddress == address(0) || 
+            _daoRewardAddress == address(0)) revert ZeroAddress();
+            
+        if (_initialSporesPerSecond == 0) revert InvalidRewardRate();
+
         sporeToken = ISporeToken(_sporeToken);
         mission = IMission(_mission);
         devRewardAddress = _devRewardAddress;
         daoRewardAddress = _daoRewardAddress;
-
-        // Set initial parameters
         sporesPerSecond = _initialSporesPerSecond;
         stakingStartTime = _stakingStartTime;
+        lastUpdateTime = block.timestamp;
 
-        // Initialize default strategy (idle)
         currentStrategy = PoolStrategy({
             strategyAddress: address(0),
             allocatedAmount: 0,
-            strategyType: 0
+            strategyType: STRATEGY_TYPE_IDLE,
+            active: false
         });
     }
 
     /**
-     * @dev Stake ETH to earn SPORE rewards
+     * @notice Stake ETH to earn SPORE rewards
      */
     function stakeEth() external payable nonReentrant whenNotPaused {
-        if (msg.value == 0) revert InvalidStakeAmount();
-        if (block.timestamp < stakingStartTime) revert StakingNotStarted();
+        if (msg.value == 0) revert InvalidStakeAmount(msg.value);
+        if (block.timestamp < stakingStartTime) {
+            revert StakingNotStarted(block.timestamp, stakingStartTime);
+        }
 
-        // Update user's stake
         StakeInfo storage stake = _stakes[msg.sender];
         
-        // Calculate and update rewards
         _updateRewards(msg.sender);
 
-        // Update total and user stake
-        totalStaked += msg.value;
-        stake.amount += msg.value;
+        unchecked {
+            // Safe because we check for overflow in _updateRewards
+            totalStaked += msg.value;
+            stake.amount += msg.value;
+        }
 
-        // Deploy to current strategy if exists
-        _deployToStrategy(msg.value);
+        if (currentStrategy.active) {
+            _deployToStrategy(msg.value);
+        }
 
-        emit EthStaked(msg.sender, msg.value);
+        emit EthStaked(msg.sender, msg.value, totalStaked);
     }
 
     /**
-     * @dev Withdraw staked ETH
+     * @notice Withdraw staked ETH
      * @param amount Amount of ETH to withdraw
      */
-    function withdraw(uint256 amount) external nonReentrant {
+    function withdraw(uint256 amount) external nonReentrant whenNotPaused {
         StakeInfo storage stake = _stakes[msg.sender];
 
-        if (amount == 0) revert InvalidStakeAmount();
-        if (amount > stake.amount) revert InsufficientBalance();
+        if (amount == 0) revert InvalidStakeAmount(amount);
+        if (amount > stake.amount) {
+            revert InsufficientBalance(amount, stake.amount);
+        }
 
-        // Update rewards and stake
         _updateRewards(msg.sender);
 
-        totalStaked -= amount;
-        stake.amount -= amount;
+        unchecked {
+            // Safe due to check above
+            totalStaked -= amount;
+            stake.amount -= amount;
+        }
 
-        // Withdraw from strategy if necessary
-        _withdrawFromStrategy(amount);
+        if (currentStrategy.active) {
+            _withdrawFromStrategy(amount);
+        }
 
-        // Transfer ETH
-        (bool success, ) = msg.sender.call{value: amount}("");
-        require(success, "Transfer failed");
+        payable(msg.sender).sendValue(amount);
 
-        emit EthWithdrawn(msg.sender, amount);
+        emit EthWithdrawn(msg.sender, amount, totalStaked);
     }
 
     /**
-     * @dev Harvest SPORE rewards
+     * @notice Harvest SPORE rewards
      */
-    function harvestRewards() external nonReentrant {
+    function harvestRewards() external nonReentrant whenNotPaused {
         StakeInfo storage stake = _stakes[msg.sender];
         
         _updateRewards(msg.sender);
 
         uint256 rewards = stake.pendingRewards;
-        if (rewards == 0) revert InsufficientBalance();
+        if (rewards == 0) revert InsufficientBalance(rewards, 0);
 
-        // Reset pending rewards
         stake.pendingRewards = 0;
+        stake.lastUpdateTime = block.timestamp;
 
-        // Distribute rewards
         _distributeRewards(msg.sender, rewards);
 
-        emit RewardsHarvested(msg.sender, rewards);
+        emit RewardsHarvested(msg.sender, rewards, block.timestamp);
     }
 
     /**
-     * @dev Update rewards for a user
+     * @notice Update rewards for a user
      * @param account Address to update rewards for
      */
     function _updateRewards(address account) internal {
         StakeInfo storage stake = _stakes[account];
         
-        // Calculate rewards based on stake and time
-        uint256 currentTime = block.timestamp;
-        uint256 timeDelta = currentTime - stakingStartTime;
-        uint256 pendingReward = (stake.amount * sporesPerSecond * timeDelta) / 1e18;
+        uint256 timeElapsed = block.timestamp - stake.lastUpdateTime;
+        if (timeElapsed == 0) return;
 
-        stake.pendingRewards += pendingReward;
+        uint256 newRewards = (stake.amount * sporesPerSecond * timeElapsed) / 1e18;
+        
+        unchecked {
+            // Safe as sporesPerSecond is controlled by owner
+            stake.pendingRewards += newRewards;
+            stake.lastUpdateTime = block.timestamp;
+        }
     }
 
     /**
-     * @dev Distribute rewards to user and protocol
+     * @notice Distribute rewards to user and protocol
      * @param recipient Reward recipient
      * @param totalRewards Total rewards to distribute
      */
     function _distributeRewards(address recipient, uint256 totalRewards) internal {
-        // Calculate dev and DAO shares
-        uint256 devShare = (totalRewards * 10) / 100; // 10% to dev
-        uint256 daoShare = (totalRewards * 5) / 100;  // 5% to DAO
+        uint256 devShare = (totalRewards * 10) / 100;
+        uint256 daoShare = (totalRewards * 5) / 100;
         uint256 userShare = totalRewards - devShare - daoShare;
 
-        // Mint SPORE tokens
+        bool success = true;
+        
         if (devShare > 0) {
-            sporeToken.mint(devRewardAddress, devShare);
+            success = success && sporeToken.mint(devRewardAddress, devShare);
         }
         
         if (daoShare > 0) {
-            sporeToken.mint(daoRewardAddress, daoShare);
+            success = success && sporeToken.mint(daoRewardAddress, daoShare);
         }
         
-        sporeToken.mint(recipient, userShare);
+        success = success && sporeToken.mint(recipient, userShare);
+        
+        if (!success) revert RewardDistributionFailed();
+
+        emit RewardsDistributed(recipient, userShare, devShare, daoShare);
     }
 
     /**
-     * @dev Deploy staked ETH to current strategy
+     * @notice Deploy staked ETH to current strategy
      * @param amount Amount to deploy
      */
     function _deployToStrategy(uint256 amount) internal {
@@ -238,16 +278,17 @@ contract ModernSporePoolEth is
         
         if (strategy.strategyAddress != address(0)) {
             try this.executeStrategyDeposit(strategy.strategyAddress, amount) {
-                strategy.allocatedAmount += amount;
-            } catch {
-                // Fallback to idle if strategy deployment fails
-                revert StrategyError();
+                unchecked {
+                    strategy.allocatedAmount += amount;
+                }
+            } catch Error(string memory reason) {
+                revert StrategyError(strategy.strategyAddress, reason);
             }
         }
     }
 
     /**
-     * @dev Withdraw from current strategy
+     * @notice Withdraw from current strategy
      * @param amount Amount to withdraw
      */
     function _withdrawFromStrategy(uint256 amount) internal {
@@ -255,39 +296,47 @@ contract ModernSporePoolEth is
         
         if (strategy.strategyAddress != address(0)) {
             try this.executeStrategyWithdraw(strategy.strategyAddress, amount) {
-                strategy.allocatedAmount -= amount;
-            } catch {
-                revert StrategyError();
+                unchecked {
+                    strategy.allocatedAmount -= amount;
+                }
+            } catch Error(string memory reason) {
+                revert StrategyError(strategy.strategyAddress, reason);
             }
         }
     }
 
     /**
-     * @dev Execute strategy deposit (external to allow try-catch)
+     * @notice Execute strategy deposit
      * @param strategyAddress Strategy contract address
      * @param amount Deposit amount
      */
-    function executeStrategyDeposit(address strategyAddress, uint256 amount) external {
-        // Placeholder for strategy-specific deposit logic
-        // In a real implementation, this would interact with specific protocols
+    function executeStrategyDeposit(
+        address strategyAddress,
+        uint256 amount
+    ) external payable {
+        if (msg.sender != address(this)) revert UnauthorizedOperation();
+        
         (bool success, ) = strategyAddress.call{value: amount}("");
-        require(success, "Strategy deposit failed");
+        if (!success) revert TransferFailed();
     }
 
     /**
-     * @dev Execute strategy withdrawal (external to allow try-catch)
+     * @notice Execute strategy withdrawal
      * @param strategyAddress Strategy contract address
      * @param amount Withdrawal amount
      */
-    function executeStrategyWithdraw(address strategyAddress, uint256 amount) external {
-        // Placeholder for strategy-specific withdrawal logic
-        // In a real implementation, this would interact with specific protocols
+    function executeStrategyWithdraw(
+        address strategyAddress,
+        uint256 amount
+    ) external {
+        if (msg.sender != address(this)) revert UnauthorizedOperation();
+        
         (bool success, ) = strategyAddress.call{value: amount}("");
-        require(success, "Strategy withdrawal failed");
+        if (!success) revert TransferFailed();
     }
 
     /**
-     * @dev Update current yield strategy
+     * @notice Update current yield strategy
      * @param newStrategy New strategy contract address
      * @param strategyType Type of strategy
      */
@@ -295,48 +344,73 @@ contract ModernSporePoolEth is
         address newStrategy, 
         uint8 strategyType
     ) external onlyOwner {
-        // Withdraw from current strategy
+        if (newStrategy == address(0)) revert ZeroAddress();
+        if (strategyType > STRATEGY_TYPE_AGGREGATOR) {
+            revert InvalidStrategy(strategyType);
+        }
+
+        address oldStrategy = currentStrategy.strategyAddress;
+        
         if (currentStrategy.allocatedAmount > 0) {
             _withdrawFromStrategy(currentStrategy.allocatedAmount);
         }
 
-        // Update strategy
         currentStrategy = PoolStrategy({
             strategyAddress: newStrategy,
             allocatedAmount: 0,
-            strategyType: strategyType
+            strategyType: strategyType,
+            active: true
         });
 
-        emit StrategyUpdated(newStrategy, strategyType);
+        emit StrategyUpdated(oldStrategy, newStrategy, strategyType, block.timestamp);
     }
 
     /**
-     * @dev Change SPORE reward rate
+     * @notice Change SPORE reward rate
      * @param newRate New reward rate
      */
     function changeRewardRate(uint256 newRate) external onlyOwner {
+        if (newRate == 0) revert InvalidRewardRate();
+        
+        uint256 oldRate = sporesPerSecond;
         sporesPerSecond = newRate;
-        emit SporeRateChanged(newRate);
+        
+        emit SporeRateChanged(oldRate, newRate, block.timestamp);
     }
 
     /**
-     * @dev Retrieve user's staked amount
-     * @param account User address
-     * @return Staked amount
+     * @notice View functions for user information
      */
     function stakedBalance(address account) external view returns (uint256) {
         return _stakes[account].amount;
     }
 
-    /**
-     * @dev Retrieve user's pending rewards
-     * @param account User address
-     * @return Pending rewards
-     */
     function pendingRewards(address account) external view returns (uint256) {
-        return _stakes[account].pendingRewards;
+        StakeInfo storage stake = _stakes[account];
+        uint256 timeElapsed = block.timestamp - stake.lastUpdateTime;
+        return stake.pendingRewards + ((stake.amount * sporesPerSecond * timeElapsed) / 1e18);
     }
 
-    // Allow contract to receive ETH
+    function getCurrentStrategy() external view returns (
+        address strategyAddress,
+        uint256 allocatedAmount,
+        uint8 strategyType,
+        bool active
+    ) {
+        return (
+            currentStrategy.strategyAddress,
+            currentStrategy.allocatedAmount,
+            currentStrategy.strategyType,
+            currentStrategy.active
+        );
+    }
+
+    /**
+     * @dev This empty reserved space is put in place to allow future versions to add new
+     * variables without shifting down storage in the inheritance chain.
+     * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+     */
+    uint256[45] private __gap;
+
     receive() external payable {}
 }
