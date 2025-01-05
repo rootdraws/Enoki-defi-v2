@@ -1,33 +1,71 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.20;
+
+// File Modernized by Claude.AI Sonnet on 1/4/25.
 
 /**
-* @title OnlyEOA
-* @dev Security contract that restricts function calls to Externally Owned Accounts only
-* Prevents smart contracts from interacting with protected functions
-* 
-* Security Note:
-* - Simple but effective anti-contract measure
-* - Does not protect against all attack vectors
-* - Should be used alongside other security measures
-*/
+ * @title OnlyEOAGuard
+ * @dev Enhanced security contract to restrict function calls to Externally Owned Accounts (EOAs)
+ * 
+ * Security Considerations:
+ * - Provides a basic protection against contract interactions
+ * - Not a comprehensive security solution
+ * - Recommended to use in conjunction with other security mechanisms
+ * 
+ * Limitations:
+ * - Can be bypassed by sophisticated attack patterns
+ * - Not recommended as the sole access control mechanism
+ */
 
-contract OnlyEOA {
-   /**
-    * @dev Modifier that only allows EOA addresses to call functions
-    * Uses msg.sender == tx.origin check to identify EOAs
-    * 
-    * How it works:
-    * - msg.sender: immediate caller of function
-    * - tx.origin: original EOA that started transaction
-    * - If they match = EOA call
-    * - If they don't match = contract call
-    */
-   modifier onlyEOA {
-       require(
-           (msg.sender == tx.origin), 
-           "Only EOAs can call"
-       );
-       _;
-   }
+abstract contract OnlyEOAGuard {
+    // Custom error for more gas-efficient error handling
+    error OnlyExternallyOwnedAccountsAllowed();
+
+    /**
+     * @dev Modifier to restrict function access to Externally Owned Accounts
+     * 
+     * Key Mechanism:
+     * - Compares msg.sender with tx.origin
+     * - Ensures original transaction sender is an EOA
+     * 
+     * @notice This method is not foolproof and should not be solely relied upon
+     */
+    modifier onlyEOA() {
+        _checkEOA();
+        _;
+    }
+
+    /**
+     * @dev Internal function to perform EOA check
+     * Separated for potential override or future extension
+     */
+    function _checkEOA() internal view virtual {
+        if (msg.sender != tx.origin) {
+            revert OnlyExternallyOwnedAccountsAllowed();
+        }
+    }
+}
+
+/**
+ * @title SecureContract
+ * @dev Example implementation of OnlyEOAGuard
+ */
+contract SecureContract is OnlyEOAGuard {
+    uint256 private _value;
+
+    /**
+     * @dev Example function protected by EOA check
+     * @param newValue Value to be set
+     */
+    function setValue(uint256 newValue) external onlyEOA {
+        _value = newValue;
+    }
+
+    /**
+     * @dev Getter for the value
+     * @return Current stored value
+     */
+    function getValue() external view returns (uint256) {
+        return _value;
+    }
 }

@@ -4,105 +4,241 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+/**
+ * @notice Interface for geyser functionality
+ */
+
+interface IEnokiGeyser {
+    function getDistributionToken() external view returns (IERC20);
+    function lockTokens(uint256 amount, uint256 durationSec) external;
+}
+
+// Still has an Error.
 
 /**
  * @title GeyserEscrow
- * @notice Manages locking of tokens into the geyser reward system
- * @dev Supports token locking with potential for multi-token expansion
- * 
- * Token Flow:
- * ETH Staking → Earn SPORE → Mint Mushrooms → Stake in Geyser → Earn ENOKI
+ * @notice Secure token locking mechanism for geyser reward system
+ * @dev Enhanced escrow with multi-token support and safety features
+ * @custom:security-contact security@example.com
  */
-contract GeyserEscrow is Ownable {
+
+contract GeyserEscrow is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
-    // Interface for geyser interaction
-    interface IEnokiGeyser {
-        function getDistributionToken() external view returns (IERC20);
-        function lockTokens(uint256 amount, uint256 durationSec) external;
-    }
-
-    // Reference to main geyser contract
+    /// @notice Core state
     IEnokiGeyser public immutable geyser;
-
-    // Potential multi-token support (commented out)
+    
+    /// @notice Token management
     mapping(address => bool) private _allowedRewardTokens;
+    mapping(address => uint256) private _totalLocked;
+    uint256 private _lastLockTime;
 
-    // Events
-    event TokensLocked(uint256 amount, uint256 duration);
-    event RewardTokenAdded(address indexed token);
-    event RewardTokenRemoved(address indexed token);
+    /// @notice Constants for validation
+    uint256 public constant MIN_LOCK_DURATION = 1 days;
+    uint256 public constant MAX_LOCK_DURATION = 365 days;
+    uint256 public constant MIN_LOCK_AMOUNT = 1e18;    // 1 token minimum
+    uint256 public constant LOCK_COOLDOWN = 1 hours;   // Minimum time between locks
+
+    /// @notice Events with detailed information
+    event TokensLocked(
+        address indexed token,
+        uint256 amount,
+        uint256 duration,
+        uint256 timestamp
+    );
+    
+    event RewardTokenStatusChanged(
+        address indexed token,
+        bool indexed isAllowed,
+        uint256 timestamp
+    );
+    
+    event TokensRecovered(
+        address indexed token,
+        address indexed recipient,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    /// @dev Custom errors
+    error ZeroAddress();
+    error InvalidAmount(uint256 provided, uint256 minimum);
+    error InvalidDuration(uint256 provided, uint256 minimum, uint256 maximum);
+    error TokenNotAllowed(address token);
+    error CooldownActive(uint256 remainingTime);
+    error LockFailed();
+    error ApprovalFailed();
+    error NoTokensToRecover();
 
     /**
-     * @notice Constructor sets up the geyser reference
-     * @param _geyser Address of the geyser contract
+     * @notice Sets up the escrow with initial geyser connection
+     * @param geyserAddress Address of the geyser contract
      */
-    constructor(IEnokiGeyser _geyser) Ownable(msg.sender) {
-        geyser = _geyser;
+    constructor(address geyserAddress) Ownable(msg.sender) {
+        if (geyserAddress == address(0)) revert ZeroAddress();
         
-        // Optionally add initial distribution token
+        geyser = IEnokiGeyser(geyserAddress);
+        
+        // Add initial distribution token
         address initialToken = address(geyser.getDistributionToken());
         _allowedRewardTokens[initialToken] = true;
+        
+        emit RewardTokenStatusChanged(
+            initialToken,
+            true,
+            block.timestamp
+        );
     }
 
     /**
-     * @notice Add a new reward token to allowed list
-     * @param tokenAddress Address of the token to allow
+     * @notice Manages reward token allowlist
+     * @param tokenAddress Token to modify
+     * @param isAllowed Whether to allow or disallow
      */
-    function addRewardToken(address tokenAddress) external onlyOwner {
-        require(tokenAddress != address(0), "Invalid token address");
-        _allowedRewardTokens[tokenAddress] = true;
-        emit RewardTokenAdded(tokenAddress);
+    function setRewardTokenStatus(
+        address tokenAddress,
+        bool isAllowed
+    ) external onlyOwner {
+        if (tokenAddress == address(0)) revert ZeroAddress();
+        
+        _allowedRewardTokens[tokenAddress] = isAllowed;
+        
+        emit RewardTokenStatusChanged(
+            tokenAddress,
+            isAllowed,
+            block.timestamp
+        );
     }
 
     /**
-     * @notice Remove a reward token from allowed list
-     * @param tokenAddress Address of the token to disallow
-     */
-    function removeRewardToken(address tokenAddress) external onlyOwner {
-        _allowedRewardTokens[tokenAddress] = false;
-        emit RewardTokenRemoved(tokenAddress);
-    }
-
-    /**
-     * @notice Check if a token is allowed
+     * @notice Checks if a token is allowed
      * @param tokenAddress Token to check
-     * @return Whether the token is allowed
+     * @return allowance status
      */
-    function isRewardTokenAllowed(address tokenAddress) external view returns (bool) {
+    function isRewardTokenAllowed(
+        address tokenAddress
+    ) external view returns (bool) {
         return _allowedRewardTokens[tokenAddress];
     }
 
     /**
      * @notice Lock tokens into the geyser
      * @param amount Amount of tokens to lock
-     * @param durationSec Duration tokens are locked for
+     * @param durationSec Duration of the lock
      */
     function lockTokens(
         uint256 amount,
         uint256 durationSec
-    ) external onlyOwner {
-        // Get distribution token from geyser
+    ) external nonReentrant whenNotPaused onlyOwner {
+        // Validate inputs
+        if (amount < MIN_LOCK_AMOUNT) {
+            revert InvalidAmount(amount, MIN_LOCK_AMOUNT);
+        }
+        if (durationSec < MIN_LOCK_DURATION || durationSec > MAX_LOCK_DURATION) {
+            revert InvalidDuration(durationSec, MIN_LOCK_DURATION, MAX_LOCK_DURATION);
+        }
+        if (block.timestamp < _lastLockTime + LOCK_COOLDOWN) {
+            revert CooldownActive(_lastLockTime + LOCK_COOLDOWN - block.timestamp);
+        }
+
+        // Get and validate distribution token
         IERC20 distributionToken = geyser.getDistributionToken();
+        if (!_allowedRewardTokens[address(distributionToken)]) {
+            revert TokenNotAllowed(address(distributionToken));
+        }
+
+        // Update state before external calls
+        _lastLockTime = block.timestamp;
+        _totalLocked[address(distributionToken)] += amount;
+
+        // Execute lock
+        // Reset approval to 0 first (safety measure for some tokens)
+        distributionToken.approve(address(geyser), 0);
         
-        // Validate token (if multi-token support is desired)
-        require(
-            _allowedRewardTokens[address(distributionToken)], 
-            "Token not allowed"
+        // Execute lock
+        distributionToken.approve(address(geyser), amount);
+        try geyser.lockTokens(amount, durationSec) {
+            emit TokensLocked(
+                address(distributionToken),
+                amount,
+                durationSec,
+                block.timestamp
+            );
+        } catch {
+            // Reset approval on failure
+            distributionToken.approve(address(geyser), 0);
+            revert LockFailed();
+        }
+
+     /**
+     * @notice Retrieves distribution token information
+     * @return token Address of current distribution token
+     * @return totalLocked Total amount locked for this token
+     * @return lastLockTime Timestamp of last lock operation
+     */
+ /**
+     * @notice Retrieves distribution token information
+     * @return token Address of current distribution token
+     * @return totalLocked Total amount locked for this token
+     * @return lastLockTime Timestamp of last lock operation
+     */
+    function getDistributionDetails() external view returns (
+        address,
+        uint256,
+        uint256
+    ) {
+        address token = address(geyser.getDistributionToken());
+        uint256 totalLocked = _totalLocked[token];
+        return (
+            token,
+            totalLocked,
+            _lastLockTime
         );
-
-        // Approve and lock tokens
-        distributionToken.safeApprove(address(geyser), amount);
-        geyser.lockTokens(amount, durationSec);
-
-        emit TokensLocked(amount, durationSec);
     }
 
     /**
-     * @notice Retrieve the current distribution token
-     * @return Address of the distribution token
+     * @notice Emergency token recovery
+     * @param token Token to recover
+     * @param recipient Address to receive tokens
+     * @param amount Amount to recover
      */
-    function getDistributionToken() external view returns (address) {
-        return address(geyser.getDistributionToken());
+    function recoverTokens(
+        IERC20 token,
+        address recipient,
+        uint256 amount
+    ) external onlyOwner {
+        if (address(token) == address(0)) revert ZeroAddress();
+        if (recipient == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount(0, 1);
+
+        uint256 balance = token.balanceOf(address(this));
+        if (balance == 0) revert NoTokensToRecover();
+
+        uint256 recoveryAmount = amount > balance ? balance : amount;
+        token.safeTransfer(recipient, recoveryAmount);
+
+        emit TokensRecovered(
+            address(token),
+            recipient,
+            recoveryAmount,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice Pause contract operations
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @notice Unpause contract operations
+     */
+    function unpause() external onlyOwner {
+        _unpause();
     }
 }

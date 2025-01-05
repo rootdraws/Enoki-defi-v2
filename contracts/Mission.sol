@@ -1,48 +1,82 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 /**
- * @title Mission
- * @notice Controls SPORE token distribution to approved pools
- * @dev Manages core economic system for SPORE reward distribution
+ * @title ModernMission
+ * @notice Advanced SPORE token distribution controller
+ * @dev Manages SPORE token distribution with enhanced security and flexibility
  * 
- * Key Features:
- * - Holds SPORE tokens for distribution
- * - Only approved pools can request SPORE transfers
- * - Owner can manage pool approval status
+ * Core Features:
+ * - Secure SPORE token distribution
+ * - Granular pool access control
+ * - Enhanced ownership management
+ * - Comprehensive event tracking
  */
-contract Mission is Ownable {
+contract ModernMission is Ownable2Step {
     using SafeERC20 for IERC20;
 
-    // Core token and approval state
-    IERC20 public immutable sporeToken;
-    mapping(address => bool) private _approvedPools;
+    // Custom error types for gas-efficient error handling
+    error InvalidTokenAddress();
+    error InvalidPoolAddress();
+    error PoolAlreadyApproved();
+    error PoolNotApproved();
+    error InvalidRecipient();
+    error InsufficientBalance();
 
-    // Events
-    event PoolApproved(address indexed pool);
-    event PoolRevoked(address indexed pool);
-    event SporesHarvested(address indexed pool, uint256 amount);
+    // Struct for extended pool information
+    struct PoolInfo {
+        bool isApproved;
+        uint256 totalHarvested;
+        uint256 lastHarvestTime;
+    }
+
+    // Core state variables
+    IERC20 public immutable sporeToken;
+    
+    // Enhanced pool tracking
+    mapping(address => PoolInfo) private _poolRegistry;
+    
+    // Global harvest tracking
+    uint256 private _totalHarvestedSpores;
+
+    // Events with comprehensive information
+    event PoolApproved(
+        address indexed pool, 
+        address indexed approver, 
+        uint256 timestamp
+    );
+    event PoolRevoked(
+        address indexed pool, 
+        address indexed revoker, 
+        uint256 timestamp
+    );
+    event SporesHarvested(
+        address indexed pool, 
+        address indexed recipient, 
+        uint256 amount, 
+        uint256 timestamp
+    );
 
     /**
-     * @notice Constructor sets up the Mission contract
+     * @notice Constructor initializes the Mission contract
      * @param _sporeToken Address of the SPORE token contract
      */
-    constructor(IERC20 _sporeToken) Ownable(msg.sender) {
-        require(address(_sporeToken) != address(0), "Invalid SPORE token");
+    constructor(IERC20 _sporeToken) Ownable2Step() {
+        if (address(_sporeToken) == address(0)) revert InvalidTokenAddress();
         sporeToken = _sporeToken;
     }
 
     /**
      * @notice Check if a pool is approved
      * @param pool Address of the pool to check
-     * @return Whether the pool is approved
+     * @return Pool approval status and additional details
      */
-    function isPoolApproved(address pool) external view returns (bool) {
-        return _approvedPools[pool];
+    function getPoolInfo(address pool) external view returns (PoolInfo memory) {
+        return _poolRegistry[pool];
     }
 
     /**
@@ -51,23 +85,42 @@ contract Mission is Ownable {
      * @param amount Amount of SPORE to transfer
      */
     function sendSpores(address recipient, uint256 amount) external {
-        require(_approvedPools[msg.sender], "Only approved pools");
-        require(recipient != address(0), "Invalid recipient");
+        // Validate pool and recipient
+        PoolInfo storage poolInfo = _poolRegistry[msg.sender];
+        if (!poolInfo.isApproved) revert PoolNotApproved();
+        if (recipient == address(0)) revert InvalidRecipient();
         
+        // Check contract balance
+        uint256 currentBalance = sporeToken.balanceOf(address(this));
+        if (amount > currentBalance) revert InsufficientBalance();
+
+        // Update pool and global harvest tracking
+        poolInfo.totalHarvested += amount;
+        poolInfo.lastHarvestTime = block.timestamp;
+        _totalHarvestedSpores += amount;
+
+        // Perform token transfer
         sporeToken.safeTransfer(recipient, amount);
-        emit SporesHarvested(msg.sender, amount);
+
+        emit SporesHarvested(msg.sender, recipient, amount, block.timestamp);
     }
 
     /**
      * @notice Owner can approve pools to request SPORE
      * @param pool Address of pool to approve
+     * @param initialAllowance Optional initial harvest allowance
      */
-    function approvePool(address pool) external onlyOwner {
-        require(pool != address(0), "Invalid pool address");
-        require(!_approvedPools[pool], "Pool already approved");
+    function approvePool(address pool, uint256 initialAllowance) external onlyOwner {
+        if (pool == address(0)) revert InvalidPoolAddress();
+        if (_poolRegistry[pool].isApproved) revert PoolAlreadyApproved();
         
-        _approvedPools[pool] = true;
-        emit PoolApproved(pool);
+        _poolRegistry[pool] = PoolInfo({
+            isApproved: true,
+            totalHarvested: 0,
+            lastHarvestTime: block.timestamp
+        });
+
+        emit PoolApproved(pool, msg.sender, block.timestamp);
     }
 
     /**
@@ -75,10 +128,10 @@ contract Mission is Ownable {
      * @param pool Address of pool to revoke
      */
     function revokePool(address pool) external onlyOwner {
-        require(_approvedPools[pool], "Pool not previously approved");
+        if (!_poolRegistry[pool].isApproved) revert PoolNotApproved();
         
-        _approvedPools[pool] = false;
-        emit PoolRevoked(pool);
+        delete _poolRegistry[pool];
+        emit PoolRevoked(pool, msg.sender, block.timestamp);
     }
 
     /**
@@ -87,5 +140,30 @@ contract Mission is Ownable {
      */
     function getSporeBalance() external view returns (uint256) {
         return sporeToken.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Get total SPORE tokens harvested across all pools
+     * @return Total harvested SPORE tokens
+     */
+    function getTotalHarvestedSpores() external view returns (uint256) {
+        return _totalHarvestedSpores;
+    }
+
+    /**
+     * @notice Allow owner to rescue stuck tokens
+     * @param token Token to rescue
+     * @param amount Amount of tokens to rescue
+     * @param recipient Recipient of rescued tokens
+     */
+    function rescueTokens(
+        IERC20 token, 
+        uint256 amount, 
+        address recipient
+    ) external onlyOwner {
+        // Prevent rescuing the SPORE token
+        if (token == sporeToken) revert InvalidTokenAddress();
+        
+        token.safeTransfer(recipient, amount);
     }
 }

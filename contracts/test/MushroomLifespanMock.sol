@@ -8,163 +8,131 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "../MushroomLib.sol";
 import {MushroomNFT} from "../MushroomNFT.sol";
+import {IMushroomFactory} from "../interfaces/IMushroomFactory.sol";
 
-// File Modernized by Claude.AI Sonnet on 12/29/24.
+// File Modernized by Claude.AI Sonnet on 1/4/25.
 
-/**
-* @title MushroomLifespanMock
-* @notice Mock contract for testing mushroom lifecycle functionality
-* @dev Simulates mushroom minting with randomized lifespans
-*/
 contract MushroomLifespanMock is 
-   Initializable, 
-   OwnableUpgradeable,
-   ReentrancyGuardUpgradeable 
+    IMushroomFactory,
+    Initializable, 
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable 
 {
-   using MushroomLib for MushroomLib.MushroomData;
-   using MushroomLib for MushroomLib.MushroomType;
+    using MushroomLib for MushroomLib.MushroomData;
+    using MushroomLib for MushroomLib.MushroomType;
 
-   /// @notice Counter used for lifespan randomization
-   uint256 private _spawnCount;
+    /// @notice Counter used for lifespan randomization
+    uint256 private _spawnCount;
+    
+    /// @notice NFT contract reference
+    MushroomNFT public mushroomNft;
+    
+    /// @notice Species this mock creates
+    uint256 private _mySpecies;
 
-   /**
-    * @notice Emitted when a mushroom is grown
-    * @param recipient Address receiving the mushroom
-    * @param tokenId ID of the minted token
-    * @param speciesId Species of the mushroom
-    * @param lifespan Generated lifespan value
-    */
-   event MushroomGrown(
-       address indexed recipient,
-       uint256 indexed tokenId,
-       uint256 indexed speciesId,
-       uint256 lifespan
-   );
+    /// @notice Error thrown when lifespan range is invalid
+    error InvalidLifespanRange(uint256 min, uint256 max);
 
-   /**
-    * @notice Error thrown when mushroom amount exceeds species limit
-    * @param requested Number requested
-    * @param available Number available
-    */
-   error ExceedsSpeciesLimit(uint256 requested, uint256 available);
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
-   /**
-    * @notice Error thrown when lifespan range is invalid
-    * @param min Minimum lifespan
-    * @param max Maximum lifespan
-    */
-   error InvalidLifespanRange(uint256 min, uint256 max);
+    /**
+     * @notice Initializes the mock
+     * @param nft NFT contract address
+     * @param speciesId Species to create
+     */
+    function initialize(
+        MushroomNFT nft,
+        uint256 speciesId
+    ) external initializer {
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        
+        mushroomNft = nft;
+        _mySpecies = speciesId;
+        _spawnCount = 0;
+    }
 
-   /**
-    * @notice Error thrown when recipient is invalid
-    * @param recipient The invalid address
-    */
-   error InvalidRecipient(address recipient);
+    /**
+     * @inheritdoc IMushroomFactory
+     */
+    function growMushrooms(
+        address recipient,
+        uint256 numMushrooms
+    ) external override nonReentrant returns (uint256[] memory tokenIds) {
+        if (recipient == address(0)) revert InvalidRecipient(recipient);
+        if (numMushrooms == 0) revert InvalidAmount(0);
 
-   /// @custom:oz-upgrades-unsafe-allow constructor
-   constructor() {
-       _disableInitializers();
-   }
+        uint256 remaining = getRemainingMintableForSpecies();
+        if (remaining < numMushrooms) {
+            revert ExceedsSpeciesLimit(numMushrooms, remaining);
+        }
 
-   /**
-    * @notice Initializes the contract
-    */
-   function initialize() external initializer {
-       __Ownable_init(msg.sender);
-       __ReentrancyGuard_init();
-       _spawnCount = 0;
-   }
+        MushroomLib.MushroomType memory species = mushroomNft.getSpecies(_mySpecies);
+        tokenIds = new uint256[](numMushrooms);
 
-   /**
-    * @notice Generates pseudo-random lifespan between min and max values
-    * @param minLifespan Minimum lifespan value
-    * @param maxLifespan Maximum lifespan value
-    * @return Generated lifespan value
-    * @dev Uses block timestamp + spawn count for randomization
-    */
-   function generateMushroomLifespan(
-       uint256 minLifespan,
-       uint256 maxLifespan
-   ) public returns (uint256) {
-       if (maxLifespan <= minLifespan) {
-           revert InvalidLifespanRange(minLifespan, maxLifespan);
-       }
+        for (uint256 i = 0; i < numMushrooms;) {
+            uint256 lifespan = generateMushroomLifespan(
+                species.minLifespan,
+                species.maxLifespan
+            );
+            
+            tokenIds[i] = mushroomNft.mint(recipient, _mySpecies, lifespan);
 
-       uint256 range = maxLifespan - minLifespan;
-       uint256 fromMin = uint256(
-           keccak256(
-               abi.encodePacked(block.timestamp + _spawnCount)
-           )
-       ) % range;
-       
-       unchecked {
-           _spawnCount++;
-       }
+            unchecked { ++i; }
+        }
 
-       return minLifespan + fromMin;
-   }
+        emit MushroomsGrown(recipient, tokenIds, _mySpecies);
+        return tokenIds;
+    }
 
-   /**
-    * @notice Gets remaining mintable mushrooms for a species
-    * @param mushroomNft NFT contract address
-    * @param speciesId Species to check
-    * @return Number of mushrooms still mintable
-    */
-   function getRemainingMintableForMySpecies(
-       MushroomNFT mushroomNft,
-       uint256 speciesId
-   ) public view returns (uint256) {
-       return mushroomNft.getRemainingMintableForSpecies(speciesId);
-   }
+    /**
+     * @notice Generates random lifespan for testing
+     * @param minLifespan Minimum lifespan
+     * @param maxLifespan Maximum lifespan
+     */
+    function generateMushroomLifespan(
+        uint256 minLifespan,
+        uint256 maxLifespan
+    ) public returns (uint256) {
+        if (maxLifespan <= minLifespan) {
+            revert InvalidLifespanRange(minLifespan, maxLifespan);
+        }
 
-   /**
-    * @notice Mints multiple mushrooms with random lifespans
-    * @param mushroomNft NFT contract address
-    * @param speciesId Species to mint
-    * @param recipient Recipient address
-    * @param numMushrooms Number of mushrooms to mint
-    */
-   function growMushrooms(
-       MushroomNFT mushroomNft,
-       uint256 speciesId,
-       address recipient,
-       uint256 numMushrooms
-   ) external nonReentrant {
-       if (recipient == address(0)) {
-           revert InvalidRecipient(recipient);
-       }
+        uint256 range = maxLifespan - minLifespan;
+        uint256 fromMin = uint256(
+            keccak256(
+                abi.encodePacked(block.timestamp + _spawnCount)
+            )
+        ) % range;
+        
+        unchecked {
+            _spawnCount++;
+        }
 
-       uint256 remaining = getRemainingMintableForMySpecies(
-           mushroomNft,
-           speciesId
-       );
-       
-       if (remaining < numMushrooms) {
-           revert ExceedsSpeciesLimit(numMushrooms, remaining);
-       }
+        return minLifespan + fromMin;
+    }
 
-       MushroomLib.MushroomType memory species = mushroomNft.getSpecies(speciesId);
-       
-       for (uint256 i = 0; i < numMushrooms;) {
-           uint256 nextId = mushroomNft.totalSupply() + 1;
-           uint256 lifespan = generateMushroomLifespan(
-               species.minLifespan,
-               species.maxLifespan
-           );
+    /**
+     * @inheritdoc IMushroomFactory
+     */
+    function getRemainingMintableForSpecies() public view override returns (uint256) {
+        return mushroomNft.getRemainingMintableForSpecies(_mySpecies);
+    }
 
-           mushroomNft.mint(recipient, nextId, speciesId, lifespan);
-           emit MushroomGrown(recipient, nextId, speciesId, lifespan);
+    /**
+     * @inheritdoc IMushroomFactory
+     */
+    function getFactorySpecies() external view override returns (uint256) {
+        return _mySpecies;
+    }
 
-           unchecked {
-               i++;
-           }
-       }
-   }
-
-   /**
-    * @notice Returns current spawn count
-    */
-   function spawnCount() external view returns (uint256) {
-       return _spawnCount;
-   }
+    /**
+     * @notice Returns current spawn count
+     */
+    function spawnCount() external view returns (uint256) {
+        return _spawnCount;
+    }
 }

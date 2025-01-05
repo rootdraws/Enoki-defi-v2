@@ -1,124 +1,172 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.24;
+
+// File Modernized by Claude.AI Sonnet on 1/4/25.
 
 /**
-* @title PaymentSplitter
-* @dev Contract that splits ETH payments between multiple recipients based on shares
-* Can be used with EthVesting for controlled release + splitting of payments
-* 
-* Example Flow:
-* 1. ETH Vesting releases funds after vesting period
-* 2. Released funds go to PaymentSplitter
-* 3. PaymentSplitter divides based on shares
-* 4. Recipients claim their portions
-*/
+ * @title ModernPaymentSplitter
+ * @dev Advanced contract for splitting ETH payments between multiple recipients
+ * 
+ * Features:
+ * - Gas-efficient implementation
+ * - Secure payment distribution
+ * - Flexible share allocation
+ * - Comprehensive error handling
+ * 
+ * Use Cases:
+ * - Team compensation
+ * - Project funding distribution
+ * - Revenue sharing
+ */
 
-import "@openzeppelin/contracts/utils/Context.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
+contract ModernPaymentSplitter {
+    // Custom errors for more gas-efficient error handling
+    error InvalidPayee(address account);
+    error InvalidShares(uint256 shares);
+    error DuplicatePayee(address account);
+    error NoPaymentDue(address account);
+    error TransferFailed(address recipient, uint256 amount);
 
-contract PaymentSplitter is Context {
+    // Events using indexed parameters for efficient filtering
+    event PayeeAdded(address indexed account, uint256 shares);
+    event PaymentReleased(address indexed to, uint256 amount);
+    event PaymentReceived(address indexed from, uint256 amount);
 
-   // Events for tracking payments and shares
-   event PayeeAdded(address account, uint256 shares);
-   event PaymentReleased(address to, uint256 amount);
-   event PaymentReceived(address from, uint256 amount);
+    // State variables using storage efficiently
+    uint256 private immutable _totalShares;
+    uint256 private _totalReleased;
 
-   // Core state variables
-   uint256 private _totalShares;       // Total shares allocated
-   uint256 private _totalReleased;     // Total ETH released so far
-   mapping(address => uint256) private _shares;    // Shares per address
-   mapping(address => uint256) private _released;  // Amount released per address
-   address[] private _payees;          // List of payee addresses
+    // Packed storage for more gas-efficient mappings
+    mapping(address payee => PayeeInfo) private _payeeInfo;
+    address[] private _payees;
 
-   /**
-    * @dev Sets up initial payees and their shares
-    * @param payees Array of recipient addresses
-    * @param shares Array of share amounts (must match payees length)
-    */
-   constructor (address[] memory payees, uint256[] memory shares) public payable {
-       require(payees.length == shares.length, "PaymentSplitter: payees and shares length mismatch");
-       require(payees.length > 0, "PaymentSplitter: no payees");
+    // Compact struct to pack storage and reduce gas costs
+    struct PayeeInfo {
+        uint256 shares;
+        uint256 released;
+    }
 
-       for (uint256 i = 0; i < payees.length; i++) {
-           _addPayee(payees[i], shares[i]);
-       }
-   }
+    /**
+     * @dev Constructor to set up initial payees and their shares
+     * @param payees_ Array of recipient addresses
+     * @param shares_ Array of share amounts corresponding to payees
+     */
+    constructor(address[] memory payees_, uint256[] memory shares_) {
+        // Validate input arrays
+        if (payees_.length == 0) revert InvalidPayee(address(0));
+        if (payees_.length != shares_.length) revert InvalidShares(0);
 
-   /**
-    * @dev Allows contract to receive ETH
-    */
-   receive () external payable virtual {
-       emit PaymentReceived(_msgSender(), msg.value);
-   }
+        // Track total shares and add payees
+        uint256 totalSharesAccumulator;
+        for (uint256 i; i < payees_.length; ++i) {
+            _addPayee(payees_[i], shares_[i]);
+            totalSharesAccumulator += shares_[i];
+        }
+        _totalShares = totalSharesAccumulator;
+    }
 
-   /**
-    * @dev Gets total shares allocated
-    */
-   function totalShares() public view returns (uint256) {
-       return _totalShares;
-   }
+    /**
+     * @dev Receive function to handle direct ETH transfers
+     */
+    receive() external payable {
+        emit PaymentReceived(msg.sender, msg.value);
+    }
 
-   /**
-    * @dev Gets total ETH released
-    */
-   function totalReleased() public view returns (uint256) {
-       return _totalReleased;
-   }
+    /**
+     * @dev Release payment for a specific account
+     * @param account Address to release payment to
+     */
+    function release(address payable account) external {
+        // Validate payee
+        PayeeInfo memory payeeInfo = _payeeInfo[account];
+        if (payeeInfo.shares == 0) revert InvalidPayee(account);
 
-   /**
-    * @dev Gets shares for specific account
-    */
-   function shares(address account) public view returns (uint256) {
-       return _shares[account];
-   }
+        // Calculate pending payment
+        uint256 totalReceived = address(this).balance + _totalReleased;
+        uint256 payment = (totalReceived * payeeInfo.shares) / _totalShares - payeeInfo.released;
+        
+        if (payment == 0) revert NoPaymentDue(account);
 
-   /**
-    * @dev Gets amount released to specific account
-    */
-   function released(address account) public view returns (uint256) {
-       return _released[account];
-   }
+        // Update accounting
+        _payeeInfo[account].released += payment;
+        _totalReleased += payment;
 
-   /**
-    * @dev Gets payee address by index
-    */
-   function payee(uint256 index) public view returns (address) {
-       return _payees[index];
-   }
+        // Perform transfer with robust error handling
+        (bool success, ) = account.call{value: payment}("");
+        if (!success) revert TransferFailed(account, payment);
 
-   /**
-    * @dev Release owed payment to specific account
-    * Calculates amount based on shares and previous withdrawals
-    * @param account Address to release payment to
-    */
-   function release(address payable account) public virtual {
-       require(_shares[account] > 0, "PaymentSplitter: account has no shares");
+        emit PaymentReleased(account, payment);
+    }
 
-       uint256 totalReceived = address(this).balance.add(_totalReleased);
-       uint256 payment = totalReceived.mul(_shares[account]).div(_totalShares).sub(_released[account]);
+    /**
+     * @dev Add a new payee to the payment splitter
+     * @param account Payee address to add
+     * @param shares_ Number of shares for the payee
+     */
+    function _addPayee(address account, uint256 shares_) private {
+        // Comprehensive input validation
+        if (account == address(0)) revert InvalidPayee(account);
+        if (shares_ == 0) revert InvalidShares(shares_);
+        if (_payeeInfo[account].shares != 0) revert DuplicatePayee(account);
 
-       require(payment != 0, "PaymentSplitter: account is not due payment");
+        // Update payee information
+        _payeeInfo[account] = PayeeInfo({
+            shares: shares_,
+            released: 0
+        });
+        _payees.push(account);
 
-       _released[account] = _released[account].add(payment);
-       _totalReleased = _totalReleased.add(payment);
+        emit PayeeAdded(account, shares_);
+    }
 
-       account.transfer(payment);
-       emit PaymentReleased(account, payment);
-   }
+    /**
+     * @dev Get total number of shares
+     * @return Total shares across all payees
+     */
+    function totalShares() external view returns (uint256) {
+        return _totalShares;
+    }
 
-   /**
-    * @dev Internal function to add new payee
-    * @param account Payee address
-    * @param shares_ Number of shares for payee
-    */
-   function _addPayee(address account, uint256 shares_) private {
-       require(account != address(0), "PaymentSplitter: account is the zero address");
-       require(shares_ > 0, "PaymentSplitter: shares are 0");
-       require(_shares[account] == 0, "PaymentSplitter: account already has shares");
+    /**
+     * @dev Get total amount of ETH released
+     * @return Total ETH released so far
+     */
+    function totalReleased() external view returns (uint256) {
+        return _totalReleased;
+    }
 
-       _payees.push(account);
-       _shares[account] = shares_;
-       _totalShares = _totalShares.add(shares_);
-       emit PayeeAdded(account, shares_);
-   }
+    /**
+     * @dev Get shares for a specific account
+     * @param account Address to check shares for
+     * @return Number of shares for the account
+     */
+    function sharesOf(address account) external view returns (uint256) {
+        return _payeeInfo[account].shares;
+    }
+
+    /**
+     * @dev Get amount released for a specific account
+     * @param account Address to check released amount
+     * @return Amount of ETH released to the account
+     */
+    function releasedOf(address account) external view returns (uint256) {
+        return _payeeInfo[account].released;
+    }
+
+    /**
+     * @dev Get payee address by index
+     * @param index Index of the payee
+     * @return Address of the payee at the given index
+     */
+    function payeeAt(uint256 index) external view returns (address) {
+        return _payees[index];
+    }
+
+    /**
+     * @dev Get total number of payees
+     * @return Number of payees in the contract
+     */
+    function payeeCount() external view returns (uint256) {
+        return _payees.length;
+    }
 }

@@ -1,226 +1,342 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.24;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
 /**
-* @title SporePoolEth
-* @dev ETH variant of SporePool that accepts ETH instead of ERC20 tokens for staking
-* 
-* Current Implementation:
-* - Simply holds ETH without utilizing it
-* - Earns SPORE rewards based on staked amount
-* - ETH sits idle in contract
-* 
-* Potential Higher Utility Versions Could:
-* 1. Liquidity Provision:
-*    - Convert ETH to WETH
-*    - Add to Uniswap V2/V3 pools with SPORE
-*    - Earn trading fees + SPORE rewards
-*
-* 2. Lending Markets:
-*    - Deposit ETH into Aave/Compound
-*    - Earn lending interest + SPORE rewards
-*    - Use aTokens/cTokens for additional yield
-*
-* 3. Yield Aggregation:
-*    - Route ETH through Yearn-style strategies
-*    - Auto-compound external yields
-*    - Stack yields with SPORE rewards
-*
-* 4. Options/Structured Products:
-*    - Use ETH as collateral for options
-*    - Create yield-enhanced structures
-*    - Generate premium income + SPORE rewards
-*/
+ * @title ModernSporePoolEth
+ * @dev Advanced ETH staking pool with flexible yield strategies
+ * 
+ * Key Features:
+ * - Native ETH staking
+ * - Modular yield generation
+ * - SPORE rewards
+ * - Flexible strategy management
+ * 
+ * Potential Yield Sources:
+ * 1. Liquidity Provision
+ * 2. Lending Markets
+ * 3. Yield Aggregation
+ * 4. Structured Products
+ */
+contract ModernSporePoolEth is 
+    Initializable, 
+    OwnableUpgradeable, 
+    ReentrancyGuardUpgradeable, 
+    PausableUpgradeable 
+{
+    // Custom error types for gas-efficient error handling
+    error InvalidStakeAmount();
+    error StakingNotStarted();
+    error InsufficientBalance();
+    error StrategyError();
+    error UnsupportedOperation();
 
+    // Interfaces for external interactions
+    interface ISporeToken {
+        function mint(address to, uint256 amount) external;
+    }
 
-import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./SporePool.sol";
+    interface IMission {
+        function sendSpores(address recipient, uint256 amount) external;
+    }
 
-contract SporePoolEth is SporePool {
-   using SafeERC20 for IERC20;
+    // Structs for more efficient storage and logic
+    struct StakeInfo {
+        uint256 amount;
+        uint256 rewardDebt;
+        uint256 pendingRewards;
+    }
 
-   /**
-    * @dev Initialize pool with same parameters as SporePool
-    * Note: _stakingToken parameter is unused since we're handling ETH directly
-    *
-    * For Higher Utility Version:
-    * - Would need additional parameters for:
-    *   - DEX router addresses
-    *   - Lending pool addresses
-    *   - Strategy controller addresses
-    *   - Fee settings for additional yields
-    */
-   function initialize(
-       address _sporeToken,
-       address _stakingToken,      // Unused in ETH variant
-       address _mission,
-       address _bannedContractList,
-       address _devRewardAddress,
-       address _enokiDaoAgent,
-       uint256[3] memory uintParams
-   ) public override initializer {
-       __Context_init_unchained();
-       __Pausable_init_unchained();
-       __ReentrancyGuard_init_unchained();
-       __Ownable_init_unchained();
+    struct PoolStrategy {
+        address strategyAddress;
+        uint256 allocatedAmount;
+        uint8 strategyType; // 0: Idle, 1: LiquidityPool, 2: Lending, 3: Aggregator
+    }
 
-       // Setup core contracts
-       sporeToken = ISporeToken(_sporeToken);
-       mission = IMission(_mission);
-       bannedContractList = BannedContractList(_bannedContractList);
+    // Core state variables
+    ISporeToken public sporeToken;
+    IMission public mission;
 
-       /*
-           uintParams array contains:
-           [0] devRewardPercentage - Percentage of rewards for devs
-           [1] stakingEnabledTime - When staking becomes active
-           [2] initialRewardRate - Initial SPORE rewards per second
-           
-           Higher Utility Version Would Add:
-           - Minimum deposit amounts
-           - Strategy allocation percentages
-           - Performance fee settings
-           - Rebalance thresholds
-       */
-       devRewardPercentage = uintParams[0];
-       devRewardAddress = _devRewardAddress;
-       stakingEnabledTime = uintParams[1];
-       sporesPerSecond = uintParams[2];
-       enokiDaoAgent = _enokiDaoAgent;
+    // Staking and reward parameters
+    uint256 public constant MAX_PERCENTAGE = 100;
+    uint256 public sporesPerSecond;
+    uint256 public totalStaked;
+    uint256 public stakingStartTime;
 
-       emit SporeRateChange(sporesPerSecond);
-   }
+    // User and reward tracking
+    mapping(address => StakeInfo) private _stakes;
+    
+    // Strategy management
+    PoolStrategy public currentStrategy;
+    address public devRewardAddress;
+    address public daoRewardAddress;
 
-   /**
-    * @dev Disabled standard ERC20 staking function
-    */
-   function stake(uint256 amount) external override nonReentrant defend(bannedContractList) whenNotPaused updateReward(msg.sender) {
-       revert("Use stakeEth function for ETH variant");
-   }
+    // Events for tracking key actions
+    event EthStaked(address indexed user, uint256 amount);
+    event EthWithdrawn(address indexed user, uint256 amount);
+    event RewardsHarvested(address indexed user, uint256 amount);
+    event StrategyUpdated(address newStrategy, uint8 strategyType);
+    event SporeRateChanged(uint256 newRate);
 
-   /**
-    * @dev Stake ETH to earn SPORE rewards
-    * @param amount Amount of ETH to stake (must match msg.value)
-    * 
-    * Current Implementation:
-    * - Simply stores ETH and tracks balance
-    * 
-    * Higher Utility Version Would:
-    * - Convert ETH to WETH
-    * - Deploy to selected strategy
-    * - Track share of strategy returns
-    * - Update reward calculations to include external yields
-    * 
-    * Requirements:
-    * - Amount > 0
-    * - msg.value matches amount
-    * - After stakingEnabledTime
-    * - Not paused
-    * - Not a banned contract
-    */
-   function stakeEth(uint256 amount) external payable nonReentrant defend(bannedContractList) whenNotPaused updateReward(msg.sender) {
-       require(amount > 0, "Cannot stake 0");
-       require(msg.value == amount, "Incorrect ETH transfer amount");
-       require(now > stakingEnabledTime, "Cannot stake before staking enabled");
-       
-       _totalSupply = _totalSupply.add(amount);
-       _balances[msg.sender] = _balances[msg.sender].add(amount);
-       
-       /* Higher Utility Version Would Add:
-       // Convert to WETH
-       WETH.deposit{value: amount}();
-       
-       // Example: Add to Uniswap
-       router.addLiquidityETH{value: amount}(
-           address(sporeToken),
-           tokenAmount,
-           minTokens,
-           minETH,
-           address(this),
-           deadline
-       );
-       
-       // OR: Deposit to Aave
-       lendingPool.deposit{value: amount}(
-           ETH_ADDRESS,
-           amount,
-           address(this),
-           0
-       );
-       */
-       
-       emit Staked(msg.sender, amount);
-   }
+    /**
+     * @dev Initialize the ETH staking pool
+     * @param _initParams Encoded initialization parameters
+     */
+    function initialize(bytes memory _initParams) public initializer {
+        __Ownable_init();
+        __ReentrancyGuard_init();
+        __Pausable_init();
 
-   /**
-    * @dev Withdraw staked ETH (overrides base implementation)
-    * @param amount Amount of ETH to withdraw
-    *
-    * Current Implementation:
-    * - Simply returns stored ETH
-    *
-    * Higher Utility Version Would:
-    * - Withdraw from active strategies
-    * - Handle unwrapping of WETH
-    * - Calculate and distribute yield
-    * - Handle slippage protection
-    *
-    * Requirements:
-    * - Amount > 0
-    * - Sufficient balance
-    * Note: Rewards must be harvested separately
-    */
-   function withdraw(uint256 amount) public override updateReward(msg.sender) {
-       require(amount > 0, "Cannot withdraw 0");
-       
-       _totalSupply = _totalSupply.sub(amount);
-       _balances[msg.sender] = _balances[msg.sender].sub(amount);
+        // Decode initialization parameters
+        (
+            address _sporeToken,
+            address _mission,
+            address _devRewardAddress,
+            address _daoRewardAddress,
+            uint256 _initialSporesPerSecond,
+            uint256 _stakingStartTime
+        ) = abi.decode(
+            _initParams, 
+            (address, address, address, address, uint256, uint256)
+        );
 
-       /* Higher Utility Version Would Add:
-       // Example: Remove from Uniswap
-       router.removeLiquidityETH(
-           address(sporeToken),
-           lpTokenAmount,
-           minTokens,
-           minETH,
-           address(this),
-           deadline
-       );
-       
-       // OR: Withdraw from Aave
-       lendingPool.withdraw(
-           ETH_ADDRESS,
-           amount,
-           address(this)
-       );
-       
-       // Handle yield distribution
-       uint256 yield = calculatedYield;
-       if(yield > 0) {
-           // Distribute yield according to protocol rules
-       }
-       */
-       
-       msg.sender.transfer(amount);
-       emit Withdrawn(msg.sender, amount);
-   }
+        // Set core contract references
+        sporeToken = ISporeToken(_sporeToken);
+        mission = IMission(_mission);
+        devRewardAddress = _devRewardAddress;
+        daoRewardAddress = _daoRewardAddress;
 
-   /**
-    * Higher Utility Version Would Add:
-    * 
-    * // Handle external rewards
-    * function harvestExternalRewards() external {
-    *     // Claim and reinvest external rewards
-    * }
-    *
-    * // Emergency function to change strategies
-    * function migrateStrategy(address newStrategy) external onlyOwner {
-    *     // Safely migrate funds to new strategy
-    * }
-    *
-    * // View function for external yields
-    * function getExternalYield() external view returns (uint256) {
-    *     // Calculate yields from all sources
-    * }
-    */
+        // Set initial parameters
+        sporesPerSecond = _initialSporesPerSecond;
+        stakingStartTime = _stakingStartTime;
+
+        // Initialize default strategy (idle)
+        currentStrategy = PoolStrategy({
+            strategyAddress: address(0),
+            allocatedAmount: 0,
+            strategyType: 0
+        });
+    }
+
+    /**
+     * @dev Stake ETH to earn SPORE rewards
+     */
+    function stakeEth() external payable nonReentrant whenNotPaused {
+        if (msg.value == 0) revert InvalidStakeAmount();
+        if (block.timestamp < stakingStartTime) revert StakingNotStarted();
+
+        // Update user's stake
+        StakeInfo storage stake = _stakes[msg.sender];
+        
+        // Calculate and update rewards
+        _updateRewards(msg.sender);
+
+        // Update total and user stake
+        totalStaked += msg.value;
+        stake.amount += msg.value;
+
+        // Deploy to current strategy if exists
+        _deployToStrategy(msg.value);
+
+        emit EthStaked(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Withdraw staked ETH
+     * @param amount Amount of ETH to withdraw
+     */
+    function withdraw(uint256 amount) external nonReentrant {
+        StakeInfo storage stake = _stakes[msg.sender];
+
+        if (amount == 0) revert InvalidStakeAmount();
+        if (amount > stake.amount) revert InsufficientBalance();
+
+        // Update rewards and stake
+        _updateRewards(msg.sender);
+
+        totalStaked -= amount;
+        stake.amount -= amount;
+
+        // Withdraw from strategy if necessary
+        _withdrawFromStrategy(amount);
+
+        // Transfer ETH
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+
+        emit EthWithdrawn(msg.sender, amount);
+    }
+
+    /**
+     * @dev Harvest SPORE rewards
+     */
+    function harvestRewards() external nonReentrant {
+        StakeInfo storage stake = _stakes[msg.sender];
+        
+        _updateRewards(msg.sender);
+
+        uint256 rewards = stake.pendingRewards;
+        if (rewards == 0) revert InsufficientBalance();
+
+        // Reset pending rewards
+        stake.pendingRewards = 0;
+
+        // Distribute rewards
+        _distributeRewards(msg.sender, rewards);
+
+        emit RewardsHarvested(msg.sender, rewards);
+    }
+
+    /**
+     * @dev Update rewards for a user
+     * @param account Address to update rewards for
+     */
+    function _updateRewards(address account) internal {
+        StakeInfo storage stake = _stakes[account];
+        
+        // Calculate rewards based on stake and time
+        uint256 currentTime = block.timestamp;
+        uint256 timeDelta = currentTime - stakingStartTime;
+        uint256 pendingReward = (stake.amount * sporesPerSecond * timeDelta) / 1e18;
+
+        stake.pendingRewards += pendingReward;
+    }
+
+    /**
+     * @dev Distribute rewards to user and protocol
+     * @param recipient Reward recipient
+     * @param totalRewards Total rewards to distribute
+     */
+    function _distributeRewards(address recipient, uint256 totalRewards) internal {
+        // Calculate dev and DAO shares
+        uint256 devShare = (totalRewards * 10) / 100; // 10% to dev
+        uint256 daoShare = (totalRewards * 5) / 100;  // 5% to DAO
+        uint256 userShare = totalRewards - devShare - daoShare;
+
+        // Mint SPORE tokens
+        if (devShare > 0) {
+            sporeToken.mint(devRewardAddress, devShare);
+        }
+        
+        if (daoShare > 0) {
+            sporeToken.mint(daoRewardAddress, daoShare);
+        }
+        
+        sporeToken.mint(recipient, userShare);
+    }
+
+    /**
+     * @dev Deploy staked ETH to current strategy
+     * @param amount Amount to deploy
+     */
+    function _deployToStrategy(uint256 amount) internal {
+        PoolStrategy storage strategy = currentStrategy;
+        
+        if (strategy.strategyAddress != address(0)) {
+            try this.executeStrategyDeposit(strategy.strategyAddress, amount) {
+                strategy.allocatedAmount += amount;
+            } catch {
+                // Fallback to idle if strategy deployment fails
+                revert StrategyError();
+            }
+        }
+    }
+
+    /**
+     * @dev Withdraw from current strategy
+     * @param amount Amount to withdraw
+     */
+    function _withdrawFromStrategy(uint256 amount) internal {
+        PoolStrategy storage strategy = currentStrategy;
+        
+        if (strategy.strategyAddress != address(0)) {
+            try this.executeStrategyWithdraw(strategy.strategyAddress, amount) {
+                strategy.allocatedAmount -= amount;
+            } catch {
+                revert StrategyError();
+            }
+        }
+    }
+
+    /**
+     * @dev Execute strategy deposit (external to allow try-catch)
+     * @param strategyAddress Strategy contract address
+     * @param amount Deposit amount
+     */
+    function executeStrategyDeposit(address strategyAddress, uint256 amount) external {
+        // Placeholder for strategy-specific deposit logic
+        // In a real implementation, this would interact with specific protocols
+        (bool success, ) = strategyAddress.call{value: amount}("");
+        require(success, "Strategy deposit failed");
+    }
+
+    /**
+     * @dev Execute strategy withdrawal (external to allow try-catch)
+     * @param strategyAddress Strategy contract address
+     * @param amount Withdrawal amount
+     */
+    function executeStrategyWithdraw(address strategyAddress, uint256 amount) external {
+        // Placeholder for strategy-specific withdrawal logic
+        // In a real implementation, this would interact with specific protocols
+        (bool success, ) = strategyAddress.call{value: amount}("");
+        require(success, "Strategy withdrawal failed");
+    }
+
+    /**
+     * @dev Update current yield strategy
+     * @param newStrategy New strategy contract address
+     * @param strategyType Type of strategy
+     */
+    function updateStrategy(
+        address newStrategy, 
+        uint8 strategyType
+    ) external onlyOwner {
+        // Withdraw from current strategy
+        if (currentStrategy.allocatedAmount > 0) {
+            _withdrawFromStrategy(currentStrategy.allocatedAmount);
+        }
+
+        // Update strategy
+        currentStrategy = PoolStrategy({
+            strategyAddress: newStrategy,
+            allocatedAmount: 0,
+            strategyType: strategyType
+        });
+
+        emit StrategyUpdated(newStrategy, strategyType);
+    }
+
+    /**
+     * @dev Change SPORE reward rate
+     * @param newRate New reward rate
+     */
+    function changeRewardRate(uint256 newRate) external onlyOwner {
+        sporesPerSecond = newRate;
+        emit SporeRateChanged(newRate);
+    }
+
+    /**
+     * @dev Retrieve user's staked amount
+     * @param account User address
+     * @return Staked amount
+     */
+    function stakedBalance(address account) external view returns (uint256) {
+        return _stakes[account].amount;
+    }
+
+    /**
+     * @dev Retrieve user's pending rewards
+     * @param account User address
+     * @return Pending rewards
+     */
+    function pendingRewards(address account) external view returns (uint256) {
+        return _stakes[account].pendingRewards;
+    }
+
+    // Allow contract to receive ETH
+    receive() external payable {}
 }

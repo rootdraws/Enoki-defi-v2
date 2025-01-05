@@ -1,161 +1,193 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
-
-/**
-* @title SporeToken
-* @dev SPORE ERC20 token with controlled minting and initial transfer restrictions
-* 
-* Key Features:
-* - Transfer restrictions until liquidity is added
-* - Controlled minting rights
-* - Burnable by holders
-* - Initial liquidity management system
-*
-* DAO Owned LP Considerations:
-* - Initial LP tokens minted to DAO treasury
-* - LP fees accrue to DAO 
-* - DAO can adjust liquidity depth based on market conditions
-* - No need for LP locking as DAO controls liquidity
-* 
-* LP Fee Collection Strategy:
-* - Collect fees periodically through DAO vote
-* - Can compound fees back into LP
-* - Can use fees for protocol development
-* - Can distribute fees to stakers/holders
-* 
-* LP Incentives Possibilities:
-* - Yield farming rewards for LP providers
-* - Bonus emissions for longer-term LPs
-* - Vote weight multipliers for LP stakers
-* - Revenue share for strategic LPs
-
-SPORE Token
-├── ERC20 Implementation
-├── Controlled minting rights
-├── Transfer restrictions for launch
-└── Burning mechanics
-
-*/
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-contract SporeToken is ERC20("SporeFinance", "SPORE"), Ownable {
+/**
+ * @title ModernSporeToken
+ * @notice Advanced ERC20 token with controlled minting and transfer mechanisms
+ * 
+ * Key Features:
+ * - Controlled minting and burning
+ * - Flexible transfer restrictions
+ * - Enhanced liquidity management
+ * - Comprehensive access controls
+ * 
+ * Governance and Liquidity Mechanisms:
+ * - DAO-controlled initial liquidity
+ * - Selective transfer permissions
+ * - Flexible minting rights
+ */
+contract ModernSporeToken is ERC20, ERC20Burnable, Ownable2Step {
+    // Custom error types for gas-efficient error handling
+    error TransfersNotEnabled();
+    error InvalidMintAmount();
+    error InvalidBurnAmount();
+    error UnauthorizedTransfer();
+    error TransfersAlreadyEnabled();
 
-   /* ========== STATE VARIABLES ========== */
-   mapping(address => bool) public minters;           // Addresses allowed to mint
-   address public initialLiquidityManager;           // Controls initial liquidity setup
+    // Advanced permission tracking
+    struct MinterConfig {
+        bool canMint;
+        uint256 maxMintAmount;
+        uint256 mintedAmount;
+    }
 
-   bool internal _transfersEnabled;                  // Global transfer switch
-   mapping(address => bool) internal _canTransferInitialLiquidity;  // Early transfer permissions
+    // Core state variables
+    address public immutable initialLiquidityManager;
+    bool private _transfersEnabled;
 
-   /**
-    * @dev Sets up token with initial liquidity manager
-    * Transfers disabled by default until liquidity setup
-    * 
-    * For DAO LP Setup:
-    * - Create initial LP position
-    * - LP tokens to DAO treasury
-    * - Set up fee collection mechanism
-    * - Initialize incentive structures
-    */
-   constructor(address initialLiquidityManager_) public {
-       _transfersEnabled = false;
-       minters[msg.sender] = true;
-       initialLiquidityManager = initialLiquidityManager_;
-       _canTransferInitialLiquidity[msg.sender] = true;
-   }
+    // Enhanced permission mappings
+    mapping(address => MinterConfig) private _minterConfigs;
+    mapping(address => bool) private _initialLiquidityTransferRights;
 
-   /* ========== MUTATIVE FUNCTIONS ========== */
+    // Events with comprehensive information
+    event TransfersEnabled(address indexed enabler, uint256 timestamp);
+    event MinterAdded(address indexed minter, uint256 maxMintAmount);
+    event MinterRemoved(address indexed minter);
+    event InitialLiquidityTransferRightsGranted(address indexed account);
 
-   /**
-    * @dev Modified transfer to enforce transfer restrictions
-    * Only allowed if:
-    * - Global transfers enabled OR
-    * - Sender has initial liquidity transfer rights
-    */
-   function transfer(address recipient, uint256 amount) public override returns (bool) {
-       require(_transfersEnabled || _canTransferInitialLiquidity[msg.sender], "SporeToken: transfers not enabled");
-       return super.transfer(recipient, amount);
-   }
+    /**
+     * @notice Constructor initializes the token
+     * @param _initialLiquidityManager Address managing initial liquidity
+     */
+    constructor(
+        address _initialLiquidityManager
+    ) ERC20("SporeFinance", "SPORE") {
+        if (_initialLiquidityManager == address(0)) revert UnauthorizedTransfer();
+        
+        initialLiquidityManager = _initialLiquidityManager;
+        
+        // Grant initial transfer and minting rights to deployer
+        _initialLiquidityTransferRights[msg.sender] = true;
+        _minterConfigs[msg.sender] = MinterConfig({
+            canMint: true,
+            maxMintAmount: type(uint256).max,
+            mintedAmount: 0
+        });
+    }
 
-   /**
-    * @dev Modified transferFrom with same restrictions as transfer
-    */
-   function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
-       require(_transfersEnabled || _canTransferInitialLiquidity[msg.sender], "SporeToken: transfers not enabled");
-       return super.transferFrom(sender, recipient, amount);
-   }
+    /**
+     * @notice Override transfer with restricted transfer mechanism
+     */
+    function transfer(
+        address recipient, 
+        uint256 amount
+    ) public virtual override returns (bool) {
+        _checkTransferEligibility(msg.sender);
+        return super.transfer(recipient, amount);
+    }
 
-   /**
-    * @dev Allow any holder to burn their tokens
-    * Could be used for:
-    * - Deflationary mechanics
-    * - Token redemption
-    * - Removing excess supply
-    */
-   function burn(uint256 amount) public {
-       require(amount > 0);
-       require(balanceOf(msg.sender) >= amount);
-       _burn(msg.sender, amount);
-   }
+    /**
+     * @notice Override transferFrom with restricted transfer mechanism
+     */
+    function transferFrom(
+        address sender, 
+        address recipient, 
+        uint256 amount
+    ) public virtual override returns (bool) {
+        _checkTransferEligibility(sender);
+        return super.transferFrom(sender, recipient, amount);
+    }
 
-   /* ========== RESTRICTED FUNCTIONS ========== */
+    /**
+     * @notice Enhanced burning mechanism
+     * @param amount Amount of tokens to burn
+     */
+    function burn(uint256 amount) public virtual override {
+        if (amount == 0) revert InvalidBurnAmount();
+        if (balanceOf(msg.sender) < amount) revert InvalidBurnAmount();
+        
+        super.burn(amount);
+    }
 
-   /**
-    * @dev Mint new tokens (only callable by minters)
-    * Used for:
-    * - Initial distribution
-    * - Rewards/emissions
-    * - Protocol-controlled minting 
-    */
-   function mint(address to, uint256 amount) public onlyMinter {
-       _mint(to, amount);
-   }
+    /**
+     * @notice Mint tokens with advanced controls
+     * @param to Recipient address
+     * @param amount Amount to mint
+     */
+    function mint(address to, uint256 amount) public {
+        MinterConfig storage config = _minterConfigs[msg.sender];
+        
+        if (!config.canMint) revert UnauthorizedTransfer();
+        if (amount == 0) revert InvalidMintAmount();
+        
+        // Check minting limits
+        if (config.mintedAmount + amount > config.maxMintAmount) {
+            revert InvalidMintAmount();
+        }
 
-   /**
-    * @dev Grant initial transfer rights before public launch
-    * Used to set up:
-    * - Initial LP
-    * - Protocol reserves
-    * - Early distributions
-    */
-   function addInitialLiquidityTransferRights(address account) public onlyInitialLiquidityManager {
-       require(!_transfersEnabled, "SporeToken: cannot add initial liquidity transfer rights after global transfers enabled");
-       _canTransferInitialLiquidity[account] = true;
-   }
+        // Update minting tracking
+        config.mintedAmount += amount;
+        
+        _mint(to, amount);
+    }
 
-   /**
-    * @dev Enable public transfers - one time operation
-    * Typically called after:
-    * - Initial LP is set
-    * - Protocol is ready for public trading
-    */
-   function enableTransfers() public onlyInitialLiquidityManager {
-       _transfersEnabled = true;
-   }
+    /**
+     * @notice Grant initial liquidity transfer rights
+     * @param account Address to grant rights
+     */
+    function grantInitialLiquidityTransferRights(
+        address account
+    ) external {
+        if (_transfersEnabled) revert TransfersAlreadyEnabled();
+        if (msg.sender != initialLiquidityManager) revert UnauthorizedTransfer();
+        
+        _initialLiquidityTransferRights[account] = true;
+        
+        emit InitialLiquidityTransferRightsGranted(account);
+    }
 
-   /**
-    * @dev Minter management functions
-    * Controls who can mint new tokens
-    */
-   function addMinter(address account) public onlyOwner {
-       minters[account] = true;
-   }
+    /**
+     * @notice Enable public transfers
+     */
+    function enableTransfers() external {
+        if (_transfersEnabled) revert TransfersAlreadyEnabled();
+        if (msg.sender != initialLiquidityManager) revert UnauthorizedTransfer();
+        
+        _transfersEnabled = true;
+        
+        emit TransfersEnabled(msg.sender, block.timestamp);
+    }
 
-   function removeMinter(address account) public onlyOwner {
-       minters[account] = false;
-   }
+    /**
+     * @notice Add a minter with configurable mint limits
+     * @param account Minter address
+     * @param maxMintAmount Maximum allowed minting amount
+     */
+    function addMinter(
+        address account, 
+        uint256 maxMintAmount
+    ) external onlyOwner {
+        _minterConfigs[account] = MinterConfig({
+            canMint: true,
+            maxMintAmount: maxMintAmount,
+            mintedAmount: 0
+        });
+        
+        emit MinterAdded(account, maxMintAmount);
+    }
 
-   // Access control modifiers
-   modifier onlyMinter() {
-       require(minters[msg.sender], "Restricted to minters.");
-       _;
-   }
+    /**
+     * @notice Remove minter status
+     * @param account Address to remove
+     */
+    function removeMinter(address account) external onlyOwner {
+        delete _minterConfigs[account];
+        
+        emit MinterRemoved(account);
+    }
 
-   modifier onlyInitialLiquidityManager() {
-       require(initialLiquidityManager == msg.sender, "Restricted to initial liquidity manager.");
-       _;
-   }
+    /**
+     * @notice Internal transfer eligibility check
+     * @param sender Address initiating transfer
+     */
+    function _checkTransferEligibility(address sender) private view {
+        if (_transfersEnabled) return;
+        if (!_initialLiquidityTransferRights[sender]) {
+            revert TransfersNotEnabled();
+        }
+    }
 }
