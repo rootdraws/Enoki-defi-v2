@@ -7,13 +7,47 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "./adapters/IMetadataAdapter.sol";
 import "../MushroomLib.sol";
 
-// File Modernized by Claude.AI Sonnet on 12/29/24.
+// Still has Errors related to Lifespan.
 
 /**
  * @title MetadataResolver
  * @notice Central hub contract that manages metadata adapters for NFT contracts
  * @dev Coordinates metadata operations across different NFT types
+
+This is a centralized metadata management contract for NFT ecosystems:
+
+Key Features:
+- Manages metadata adapters for different NFT contracts
+- Acts as a routing hub for metadata operations
+- Supports dynamic metadata resolution
+
+Core Functionality:
+1. Metadata Routing
+- Maps NFT contracts to specific metadata adapters
+- Provides methods to query NFT metadata
+- Supports stakeable, burnable, and lifespan checks
+
+2. Access Control
+- Admin-controlled adapter registration
+- Role-based lifespan modification
+- Reentrancy protection
+
+3. Metadata Operations
+- Retrieve mushroom-specific data
+- Update token lifespans
+- Validate token attributes
+
+Unique Design Elements:
+- Flexible adapter architecture
+- Centralized metadata resolution
+- Comprehensive error handling
+- Upgradeable contract design
+- Supports multiple NFT contract types
+
+The contract provides a flexible, secure mechanism for managing metadata across different NFT contracts in a complex ecosystem, acting as a universal metadata router.
+
  */
+
 contract MetadataResolver is 
     AccessControlUpgradeable, 
     ReentrancyGuardUpgradeable 

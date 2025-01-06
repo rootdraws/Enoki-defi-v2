@@ -14,6 +14,34 @@ import "./BaseMetadataAdapter.sol";
  * @title MushroomAdapter
  * @notice Adapter for MushroomNFT with factory-controlled lifespans
  * @dev Implements read-only functionality for mushroom metadata
+ 
+ This is a metadata adapter specifically designed for MushroomNFT contracts:
+
+Key Features:
+- Read-only metadata resolution
+- Factory-controlled lifespan management
+- Lightweight metadata interface
+
+Core Functionality:
+1. Metadata Operations
+- Retrieve mushroom metadata
+- Check token stakeable/burnable status
+- Fetch species details
+- Validate contract health
+
+2. Security Mechanisms
+- Reentrancy protection
+- Initialization checks
+- Immutable NFT contract reference
+
+Unique Design Elements:
+- Prevents lifespan modifications after minting
+- Provides a standardized metadata interface
+- Supports version tracking
+- Maintains compatibility with metadata resolver
+
+The contract acts as a read-only adapter that bridges the MushroomNFT contract with the ecosystem's metadata resolution system, ensuring consistent and controlled metadata access.
+ 
  */
 
 contract MushroomAdapter is 

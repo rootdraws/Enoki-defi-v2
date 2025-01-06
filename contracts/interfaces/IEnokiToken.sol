@@ -11,6 +11,39 @@ import "@openzeppelin/contracts/governance/utils/IVotes.sol";
  * @title IEnokiToken
  * @notice Interface for Enoki governance token with initial supply distribution and voting
  * @dev Extends standard ERC20 with voting, permit, and distribution features
+ 
+ This is a comprehensive interface for a governance token with advanced distribution and voting capabilities:
+
+Key Features:
+- ERC20 standard token
+- Governance voting support
+- Permit (gasless approval) functionality
+- Fixed initial token allocation
+
+Core Functionality:
+1. Token Distribution
+- One-time initial token allocation
+- Predefined allocation percentages
+- Distribution to specific ecosystem contracts
+- Burning mechanism
+
+2. Governance Mechanisms
+- Token-based voting power
+- Delegation of governance rights
+- Comprehensive distribution tracking
+
+Unique Design Elements:
+- Immutable total supply
+- Explicit allocation for:
+  - Geyser rewards
+  - Liquidity pool
+  - DAO treasury
+  - Team vesting
+- Detailed event logging
+- Comprehensive error handling
+
+The interface provides a robust framework for a governance token with controlled distribution, voting capabilities, and ecosystem-specific allocations.
+ 
  */
 
 interface IEnokiToken is IERC20, IERC20Permit, IVotes {

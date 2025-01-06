@@ -7,7 +7,36 @@ pragma solidity ^0.8.20;
  * @title ICamelotFactory
  * @notice Interface for the Camelot Factory contract which manages pair creation and fees
  * @dev This interface modernizes the original Camelot DEX factory interface
+
+This is an interface for a decentralized exchange (DEX) factory contract with advanced pair management capabilities:
+
+Key Features:
+- Token pair creation and management
+- Flexible fee configuration
+- Ownership and referral fee tracking
+
+Core Functionality:
+1. Pair Management
+- Create token pairs
+- Retrieve pair addresses
+- Track total number of pairs
+- Query pair details
+
+2. Fee Configuration
+- Set fee recipient
+- Configure owner and referrer fee shares
+- Flexible fee allocation
+
+Unique Design Elements:
+- Comprehensive event logging for pair creation
+- Supports multiple ownership roles
+- Detailed fee tracking
+- Flexible pair creation mechanism
+
+The interface provides a robust framework for managing liquidity pairs on a decentralized exchange, with sophisticated fee and ownership controls.
+
  */
+
 interface ICamelotFactory {
     /**
      * @dev Emitted when a new pair is created

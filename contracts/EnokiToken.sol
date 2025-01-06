@@ -26,6 +26,43 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * - Reentrancy protection
  * - Zero address checks
  * - Distribution state validation
+ 
+ This is a sophisticated ERC20 governance token for the Enoki DeFi Club with several key features:
+
+Key Characteristics:
+- Fixed total supply of 1 million ENOKI tokens
+- Fixed distribution across four allocations:
+  - 40% Geyser (Mushroom staking rewards)
+  - 30% Liquidity Pool
+  - 20% DAO Treasury
+  - 10% Team/Dev (vested)
+
+Core Features:
+1. Governance Capabilities
+- ERC20 Votes implementation
+- Delegation of voting power
+- Signature-based delegation
+- Voting power tracking
+
+2. Security Mechanisms
+- Two-step ownership transfer
+- Reentrancy protection
+- Zero address checks
+- One-time, immutable token distribution
+- Token burning functionality
+
+3. Advanced Token Design
+- EIP-2612 permit support
+- Nonce management
+- Comprehensive event logging
+
+Unique Design Elements:
+- Fixed supply with predefined allocation
+- Strict initialization process
+- Designed for a complex DeFi ecosystem involving staking, NFTs, and governance
+
+The contract provides a robust, feature-rich token designed for decentralized governance and ecosystem participation.
+ 
  */
 
 contract ModernEnokiToken is 

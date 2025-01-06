@@ -8,6 +8,37 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title IModernMerkleDistributor
  * @notice Interface for advanced token distribution system using Merkle proofs
+ 
+ This is a sophisticated interface for a token distribution system leveraging Merkle tree proofs:
+
+Key Features:
+- Secure, verifiable token claims
+- Merkle proof-based distribution
+- Flexible claim mechanism
+
+Core Functionality:
+1. Token Distribution
+- Claim tokens with Merkle proofs
+- Track claim status
+- Support tiered claiming with optional tips
+- DAO token recovery
+
+2. Security Mechanisms
+- Comprehensive error handling
+- Claim verification
+- Pausable distribution
+- Dust collection
+- Time-based release controls
+
+Unique Design Elements:
+- Cryptographically secure claim verification
+- Detailed claim tracking
+- Emergency action support
+- Flexible claim percentage
+- Support for ETH and token balances
+
+The interface provides a robust, flexible framework for complex, secure token distribution with multiple safety and governance features.
+ 
  */
 
 interface IModernMerkleDistributor {

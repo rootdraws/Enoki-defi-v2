@@ -14,6 +14,19 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * @title ModernMerkleDistributor
  * @notice Advanced token distribution system using Merkle proofs with enhanced security
  * @dev Implements ReentrancyGuard and Pausable for additional safety
+ 
+ The ModernMerkleDistributor contract is an advanced token distribution system that uses Merkle proofs for secure and efficient token claiming. Key features include:
+
+1. Claimants can prove their eligibility and claim tokens using Merkle proofs.
+2. Optional tipping mechanism for rewarding referrers or the contract owner.
+3. Automatic transfer of unclaimed tokens to a DAO treasury after a specified release time.
+4. Comprehensive claim tracking and event emission for transparency.
+5. Emergency pause and unpause functionality for contract management.
+6. Ability to collect accidentally sent tokens or ETH by the contract owner.
+7. Reentrancy protection and input validation for enhanced security.
+
+The contract is designed to distribute tokens to a large number of recipients in a gas-efficient manner, while providing flexibility for managing the distribution process. It ensures that only eligible recipients can claim their tokens and allows for the recovery of unclaimed tokens after a certain period. The contract prioritizes security and includes measures to prevent unauthorized access and potential exploits.
+ 
  */
 
 contract ModernMerkleDistributor is Ownable2Step, ReentrancyGuard, Pausable {

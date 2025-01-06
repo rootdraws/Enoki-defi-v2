@@ -13,6 +13,19 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * @title ModernMission
  * @notice Advanced SPORE token distribution controller with enhanced security
  * @dev Manages SPORE token distribution with reentrancy protection and pause functionality
+ 
+ The ModernMission contract is an advanced SPORE token distribution controller. It manages the distribution of SPORE tokens to approved pools, with enhanced security features. Key aspects include:
+
+1. Owner-controlled pool approval and revocation, with optional maximum batch size limits.
+2. Approved pools can request SPORE token transfers to specified recipients.
+3. Comprehensive tracking of pool-specific and global harvest statistics.
+4. Emergency pause and unpause functionality to halt operations if needed.
+5. Ability for the owner to rescue stuck tokens (except SPORE) in case of emergencies.
+6. Enhanced security with reentrancy protection, input validation, and custom error handling.
+7. Comprehensive event emission for pool management and token harvesting.
+
+The contract is designed to be used in conjunction with the SPORE token contract, allowing approved pools to distribute SPORE tokens in a controlled and auditable manner. It provides flexibility for managing multiple pools while ensuring the security and integrity of the token distribution process.
+ 
  */
 
 contract ModernMission is Ownable2Step, ReentrancyGuard, Pausable {

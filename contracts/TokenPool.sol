@@ -12,6 +12,11 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
  * @title TokenPool
  * @dev Modern contract to manage isolated token pools with enhanced security
  * 
+ 
+ This is an upgradeable Token Pool smart contract written in Solidity. It allows the contract owner to securely manage an isolated pool of ERC20 tokens. The owner can transfer tokens from the pool to specified addresses. It includes safety features like reentrancy protection, zero address checks, and an emergency function to rescue tokens accidentally sent to the contract. The contract is designed to be upgradeable using the OpenZeppelin upgradeable plugin system, enabling future enhancements without affecting the storage layout.
+ 
+ * 
+ * 
  * Key Features:
  * - Isolated token pools with SafeERC20 protection
  * - Owner-controlled transfers with reentrancy protection

@@ -21,6 +21,45 @@ import {BannedContractList} from "./BannedContractList.sol";
  * @notice Advanced NFT staking system with unique Mushroom mechanics
  * @dev Implements staking with strength-based rewards and lifespan mechanics
  * @custom:security-contact security@example.com
+ 
+ This is an advanced NFT staking contract for the Enoki ecosystem with sophisticated reward mechanics:
+
+Key Features:
+- Stake mushroom NFTs
+- Dynamic rewards based on NFT strength
+- Multi-stake support
+- Batch staking capability
+- Dev reward allocation
+
+Core Mechanics:
+1. Staking System
+- Strength-based reward calculation
+- Minimum stake duration
+- Maximum stakes per address
+- Supports multiple NFT contracts
+
+2. Security Mechanisms
+- Reentrancy protection
+- Pausable contract
+- Banned contract list
+- Owner-controlled parameters
+- Zero-address checks
+
+3. Reward Distribution
+- Flexible dev reward percentage
+- Per-stake reward tracking
+- Minimum stake duration
+- Claim-based reward distribution
+
+Unique Design Elements:
+- Uses metadata resolver for NFT attributes
+- Supports emergency withdrawals
+- Dynamic reward computation
+- Comprehensive event logging
+- Configurable staking parameters
+
+The contract provides a robust, flexible mechanism for NFT staking with advanced reward and security features in the Enoki DeFi ecosystem.
+ 
  */
 
 contract EnokiGeyser is Ownable, ReentrancyGuard, Defensible, Pausable {

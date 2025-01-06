@@ -10,6 +10,34 @@ import "@openzeppelin/contracts/access/IAccessControl.sol";
  * @title IMushroomMetadata
  * @notice Central hub interface for managing mushroom NFT metadata resolution
  * @dev Coordinates metadata operations across different NFT types through adapters
+ 
+ This is a comprehensive interface for managing metadata across diverse NFT contracts in the Mushroom ecosystem:
+
+Key Features:
+- Centralized metadata resolution
+- Supports multiple NFT contract types
+- Flexible adapter management
+
+Core Functionality:
+1. Metadata Operations
+- Check token stakeable/burnable status
+- Retrieve mushroom-specific metadata
+- Validate NFT contract adapters
+
+2. Adapter Management
+- Register and update metadata adapters
+- Query adapter existence
+- Retrieve adapter addresses
+
+Unique Design Elements:
+- Access control integration
+- Supports additional metadata context
+- Standardized metadata resolution
+- Comprehensive error handling
+- Extensible for different NFT types
+
+The interface provides a robust, flexible mechanism for resolving and managing metadata across different NFT implementations, ensuring consistent metadata access and validation.
+ 
  */
 
 interface IMushroomMetadata is IAccessControl {

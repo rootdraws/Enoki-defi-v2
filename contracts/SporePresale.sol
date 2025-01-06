@@ -16,6 +16,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * 
  * Presale now expects token to be minted in its entirity, before being distributed, rather than minted on command.
  * 
+ 
+ This is a Spore token presale contract. It allows users to purchase Spore tokens with ETH at a fixed price during a presale period. The contract includes features like a whitelist, purchase limits per address, a supply cap, direct ETH transfers to a dev wallet, and emergency pause functionality. It uses OpenZeppelin's Ownable, ReentrancyGuard, and Pausable contracts for enhanced access control and security. The contract expects the Spore token supply to be minted and transferred to it before the presale starts.
+ 
+ * 
+ * 
  * Core Features:
  * - Whitelist support with merkle proof verification
  * - Fixed price in ETH with precision handling

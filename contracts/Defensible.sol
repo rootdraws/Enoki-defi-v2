@@ -8,6 +8,26 @@ import {BannedContractList} from "./BannedContractList.sol";
 /**
  * @title Defensible
  * @notice Lightweight security contract to protect against unauthorized contract interactions
+ 
+ This is a lightweight security contract designed to prevent unauthorized contract interactions:
+
+Key Features:
+- Implements a defense modifier for contract calls
+- Blocks interactions from unauthorized contracts
+- Uses a banned contract list for validation
+
+Core Security Mechanism:
+- Checks if the sender is a contract (not an EOA)
+- Verifies the sender against an approved contract list
+- Reverts transactions from unapproved contracts
+
+Unique Design Elements:
+- Only blocks interactions if a chain ID exists
+- Allows approved contracts to interact
+- Provides a flexible, reusable security pattern
+
+The contract adds an extra layer of security by preventing potentially malicious smart contract interactions while maintaining flexibility for approved contracts.
+ 
  */
 
 abstract contract Defensible {

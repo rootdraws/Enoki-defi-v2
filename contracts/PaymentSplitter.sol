@@ -7,6 +7,11 @@ pragma solidity ^0.8.24;
  * @title ModernPaymentSplitter
  * @dev Advanced contract for splitting ETH payments between multiple recipients
  * 
+ 
+ This is a modern, gas-optimized ETH payment splitting contract. It allows distributing incoming ETH payments among a predefined set of payees based on their assigned shares. Key features include secure payment handling, flexible share allocation, and comprehensive error handling using custom errors. The contract provides functions to view total shares, released amounts, and individual payee information. It is designed for use cases like team compensation, project funding distribution, and revenue sharing.
+ 
+ * 
+ * 
  * Features:
  * - Gas-efficient implementation
  * - Secure payment distribution

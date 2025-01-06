@@ -29,6 +29,9 @@ interface IMission {
  * @title ModernSporePool
  * @notice Advanced staking pool with SPORE rewards and Mushroom NFT integration
  * @dev Implements upgradeable patterns with enhanced security and optimization
+ 
+ This is an upgradeable staking pool contract called ModernSporePool. Users can stake tokens to earn SPORE token rewards based on a configurable reward rate. The earned SPORE rewards can be used to mint Mushroom NFTs from an external factory contract. The contract includes features like pausability, reentrancy protection, and the ability to update the reward rate through a governance vote. A portion of the rewards are distributed to a dev address and a DAO address. The contract interacts with external token, NFT, and mission contracts for additional functionality.
+ 
  */
 contract ModernSporePool is 
     Initializable, 

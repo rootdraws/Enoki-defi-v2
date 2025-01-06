@@ -10,6 +10,34 @@ import "@openzeppelin/contracts/access/IAccessControl.sol";
  * @title IMetadataAdapter
  * @notice Interface for mushroom metadata resolution with factory-controlled lifespans
  * @dev Removes lifespan modification as it's now controlled by factory at mint time
+ 
+ This is an interface defining a standardized metadata resolution mechanism for mushroom-based NFTs:
+
+Key Features:
+- Defines metadata retrieval methods
+- Supports token-level operations
+- Factory-controlled lifespan management
+
+Core Methods:
+1. Metadata Queries
+- Retrieve mushroom data
+- Check token burnability and stakeable status
+- Fetch token species details
+
+2. Adapter Management
+- Version tracking
+- Contract health verification
+- Lifespan modification status
+
+Unique Design Elements:
+- Extends access control interface
+- Removes direct lifespan modification
+- Provides flexible metadata resolution
+- Supports additional data pass-through
+- Includes custom error handling
+
+The interface establishes a consistent, extensible contract for resolving and managing NFT metadata across different implementations, with a focus on mushroom-specific attributes.
+ 
  */
 
 interface IMetadataAdapter is IAccessControl {

@@ -10,7 +10,43 @@ import "../MushroomLib.sol";
 import {MushroomNFT} from "../MushroomNFT.sol";
 import {IMushroomFactory} from "../interfaces/IMushroomFactory.sol";
 
-// File Modernized by Claude.AI Sonnet on 1/4/25.
+// Still has Errors relating to Lifespan.
+
+/*
+
+This is a mock contract for generating Mushroom NFTs with dynamic lifespan generation:
+
+Key Features:
+- Creates Mushroom NFTs for a specific species
+- Randomly generates mushroom lifespans
+- Implements factory interface for NFT minting
+- Tracks remaining mintable NFTs for a species
+
+Core Functionality:
+1. Mushroom Generation
+- Mint multiple mushrooms to a recipient
+- Randomly generate lifespan within species-defined range
+- Ensure minting doesn't exceed species limit
+
+2. Randomization Mechanism
+- Uses timestamp and spawn count for pseudo-random lifespan
+- Incremental spawn count to ensure uniqueness
+- Validates lifespan range before generation
+
+3. Security Mechanisms
+- Reentrancy protection
+- Zero-address checks
+- Initializable and upgradeable
+- Owner-controlled
+
+Unique Design Elements:
+- Integrated with a MushroomNFT contract
+- Follows factory pattern for NFT creation
+- Supports species-specific minting constraints
+- Flexible lifespan generation
+
+The contract provides a controlled, randomized mechanism for creating Mushroom NFTs with varying lifespans in the Enoki ecosystem.
+*/
 
 contract MushroomLifespanMock is 
     IMushroomFactory,

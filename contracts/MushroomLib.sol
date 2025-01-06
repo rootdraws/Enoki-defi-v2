@@ -7,7 +7,21 @@ pragma solidity ^0.8.20;
 * @title MushroomLib
 * @notice Core data structures and validation for Mushroom NFT ecosystem
 * @dev Defines mushroom traits and species configuration
+
+This is a Solidity library contract called MushroomLib that provides core data structures and validation functions for the Mushroom NFT ecosystem. It does not represent a complete contract on its own, but rather a set of reusable components that can be utilized by other contracts.
+
+Key components include:
+
+1. Custom errors for species cap, invalid mushroom data, and invalid species data.
+2. MushroomData struct defining core attributes of a Mushroom NFT (species, strength, lifespan).
+3. MushroomType struct for species configuration (ID, strength, lifespan range, minted count, supply cap).
+4. Functions to check if more mushrooms can be minted, get remaining mintable amount, validate mushroom data, and retrieve species stats.
+5. Internal helper functions for species validation and data formatting.
+
+The library aims to provide a standardized and secure foundation for managing mushroom-related data and logic within the broader Mushroom NFT ecosystem.
+
 */
+
 library MushroomLib {
    /**
     * @notice Error thrown when species cap is exceeded

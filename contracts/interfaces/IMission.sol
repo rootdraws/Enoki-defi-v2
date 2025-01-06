@@ -8,6 +8,34 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title IModernMission
  * @notice Interface for advanced SPORE token distribution controller
+ 
+ This is an advanced interface for managing SPORE token distribution across liquidity pools:
+
+Key Features:
+- Controlled SPORE token allocation
+- Flexible pool management
+- Comprehensive tracking mechanisms
+
+Core Functionality:
+1. Pool Management
+- Approve and revoke token distribution pools
+- Set pool-specific batch size limits
+- Track harvesting metrics for each pool
+
+2. Token Distribution
+- Send SPORE tokens to recipients
+- Manage global harvest count
+- Emergency token rescue capabilities
+
+Unique Design Elements:
+- Detailed pool information tracking
+- Comprehensive error handling
+- Pausable distribution mechanism
+- Event logging for all significant actions
+- Granular access control
+
+The interface provides a robust framework for managing complex token distribution strategies with built-in safety and flexibility.
+
  */
 
 interface IModernMission {

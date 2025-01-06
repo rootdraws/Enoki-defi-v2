@@ -9,6 +9,35 @@ import "../MushroomNFT.sol";
 /**
  * @title IMushroomFactory
  * @notice Interface for advanced mushroom NFT creation and management
+ 
+ This is a comprehensive interface for managing mushroom NFT creation and factory operations:
+
+Key Features:
+- Advanced NFT generation mechanism
+- Species-specific mushroom minting
+- Token recovery functionality
+
+Core Functionality:
+1. NFT Creation
+- Mint multiple mushrooms in one transaction
+- Enforce species-specific minting limits
+- Generate token IDs for created NFTs
+
+2. Factory Management
+- Track remaining mintable NFTs
+- Retrieve factory species
+- Manage spawn tracking
+- Return associated tokens (SPORE, NFT)
+
+Unique Design Elements:
+- Supports multiple mushroom species
+- Comprehensive error handling
+- Flexible recipient targeting
+- Dust collection mechanism
+- Event logging for NFT creation
+
+The interface provides a robust, flexible framework for creating and managing mushroom NFTs with controlled minting and advanced factory features.
+ 
  */
 
 interface IMushroomFactory {

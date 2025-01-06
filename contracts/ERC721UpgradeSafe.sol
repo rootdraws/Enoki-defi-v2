@@ -16,6 +16,40 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
  * @notice Enhanced upgradeable ERC721 implementation with full feature set
  * @dev Base contract for upgradeable NFT collections with enumeration and metadata
  * @custom:security-contact security@example.com
+ 
+ This is an advanced, upgradeable ERC721 (NFT) smart contract with comprehensive features:
+
+Key Characteristics:
+- Fully upgradeable NFT implementation
+- Supports metadata management
+- Includes pausable and reentrancy protection
+- Provides flexible metadata controls
+
+Core Features:
+1. Metadata Management
+- Set and update base and contract-level URIs
+- Option to permanently freeze metadata
+- Prevents changes after freezing
+
+2. Security Mechanisms
+- Ownable access control
+- Pausable token transfers
+- Reentrancy protection
+- Custom error handling
+
+3. Advanced NFT Functionalities
+- Enumerable token tracking
+- URI storage
+- Interface support checks
+- Customizable token URI retrieval
+
+Unique Design Elements:
+- Uses OpenZeppelin's upgradeable contract library
+- Abstract contract serving as a robust base for NFT projects
+- Allows dynamic configuration while maintaining security
+
+The contract provides a secure, flexible foundation for creating upgradeable NFT collections with granular control over metadata and transfers.
+ 
  */
 
 abstract contract ERC721UpgradeSafe is

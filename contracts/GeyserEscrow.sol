@@ -22,7 +22,25 @@ interface IEnokiGeyser {
  * @notice Secure token locking mechanism for geyser reward system
  * @dev Enhanced escrow with multi-token support and safety features
  * @custom:security-contact security@example.com
+
+The GeyserEscrow contract is a secure token locking mechanism designed to work with the EnokiGeyser reward system. It allows the contract owner to lock approved reward tokens into the geyser for a specified duration, enabling users to earn rewards based on their locked tokens.
+
+Key features of the GeyserEscrow contract include:
+
+1. Allowlist management for reward tokens, ensuring only approved tokens can be locked.
+2. Secure token locking with validations for minimum lock amount, duration, and cooldown period.
+3. Tracking of total locked amounts per token and last lock time.
+4. Emergency token recovery function to retrieve tokens sent to the contract by mistake.
+5. Pause and unpause functionality to halt operations if needed.
+6. Reentrancy protection and input validation to prevent unauthorized access and potential exploits.
+7. Comprehensive event emission for transparency and monitoring.
+
+The contract interacts with the EnokiGeyser contract to perform the actual token locking and integrates with the distribution token used by the geyser. It ensures that only the contract owner can perform lock operations and manages the approval process for seamless integration with the geyser.
+
+Overall, the GeyserEscrow contract provides a secure and controlled way to participate in the EnokiGeyser reward system, enabling users to lock their tokens and earn rewards while maintaining the safety of their funds.
+
  */
+
 contract GeyserEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 

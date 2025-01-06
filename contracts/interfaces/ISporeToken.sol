@@ -10,6 +10,35 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
  * @title IModernSporeToken
  * @notice Interface for advanced ERC20 token with controlled minting and transfer mechanisms
  * @dev Extends ERC20 with EIP-2612 permit support
+ 
+ This is an advanced ERC20 token interface with sophisticated control mechanisms:
+
+Key Features:
+- ERC20 and permit (EIP-2612) token standard
+- Controlled minting and burning
+- Transfer restriction capabilities
+
+Core Functionality:
+1. Token Management
+- Configurable minters with mint limits
+- Burn functionality
+- Max supply enforcement
+- Initial liquidity transfer rights
+
+2. Security Mechanisms
+- Minter role management
+- Transfer enablement control
+- Comprehensive error handling
+- Prevents transfers before activation
+
+Unique Design Elements:
+- Granular access control for token operations
+- Supports gasless token approvals via permit
+- Events for tracking significant token actions
+- Flexible minting and transfer restrictions
+
+The interface provides a robust, flexible framework for creating a controlled, feature-rich ERC20 token with advanced governance and security features.
+ 
  */
 
 interface IModernSporeToken is IERC20, IERC20Permit {

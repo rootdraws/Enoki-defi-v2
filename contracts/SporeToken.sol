@@ -14,6 +14,11 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @notice Advanced ERC20 token with controlled minting and transfer mechanisms
  * @dev Implements EIP-2612 permit for gasless approvals
  * 
+ 
+ This is an advanced ERC20 token contract called ModernSporeToken. It includes features like controlled minting with configurable limits per minter, burning, permit (EIP-2612) for gasless approvals, and restricted transfers. The contract has a max supply of 1 billion tokens and allows the contract owner to grant special transfer rights before enabling public transfers. It uses custom errors and reentrancy guards for enhanced security and gas optimization. The contract is designed to provide flexibility and control over token minting, burning, and distribution.
+ 
+ * 
+ * 
  * Key Features:
  * - Controlled minting and burning with reentrancy protection
  * - Flexible transfer restrictions

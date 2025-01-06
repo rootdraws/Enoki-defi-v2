@@ -7,6 +7,17 @@ pragma solidity ^0.8.20;
  * @title OnlyEOAGuard
  * @dev Enhanced security contract to restrict function calls to Externally Owned Accounts (EOAs)
  * 
+ * 
+ 
+ This contract provides a basic security mechanism to restrict certain function calls to only Externally Owned Accounts (EOAs). It includes an abstract contract called OnlyEOAGuard which defines a modifier onlyEOA() that checks if the caller (msg.sender) is the same as the original transaction sender (tx.origin). If not, it means the call is coming from a contract, and it reverts with a custom error.
+
+The SecureContract is an example implementation demonstrating how to use the OnlyEOAGuard. It has a state variable _value and two functions:
+1. setValue(uint256 newValue) which is protected by the onlyEOA modifier, allowing only EOA callers to set the value.
+2. getValue() which is a public view function that returns the current value.
+
+However, it's important to note that this security mechanism is not foolproof and can be bypassed by sophisticated attack patterns. It should not be relied upon as the sole access control solution and should be used in conjunction with other security measures.
+ 
+ * 
  * Security Considerations:
  * - Provides a basic protection against contract interactions
  * - Not a comprehensive security solution

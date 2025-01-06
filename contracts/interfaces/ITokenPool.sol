@@ -10,6 +10,34 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
  * @title ITokenPool
  * @notice Interface for managing upgradeable token pools with enhanced security
  * @dev Implements initializable pattern for proxy deployment
+ 
+This is an interface defining a flexible, secure token pool management system:
+
+Key Features:
+- Initializable token pool contract
+- Supports single token management
+- Enhanced security mechanisms
+
+Core Functionality:
+1. Token Operations
+- Initialize pool with specific token
+- Transfer tokens from pool
+- Query pool balance
+- Rescue accidentally sent tokens
+
+2. Security Mechanisms
+- Zero-address checks
+- Prevents rescuing pool's native token
+- Comprehensive error handling
+
+Unique Design Elements:
+- Upgradeable proxy support
+- Event logging for all significant actions
+- Standardized token pool management interface
+- Flexible fund transfer and rescue capabilities
+
+The interface provides a robust, reusable pattern for creating token pools with built-in safety checks and management capabilities.
+ 
  */
 
 interface ITokenPool {

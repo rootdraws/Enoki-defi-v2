@@ -11,6 +11,36 @@ import "../../MushroomLib.sol";
  * @title BaseMetadataAdapter
  * @notice Abstract base contract for mushroom metadata adapters
  * @dev Implements common functionality for metadata adapters
+ 
+This is an abstract base contract providing a standardized foundation for mushroom metadata adapters:
+
+Key Features:
+- Implements common metadata adapter functionality
+- Provides interface compatibility
+- Defines core metadata resolution methods
+
+Core Functionality:
+1. Metadata Resolution
+- Defines abstract methods for metadata retrieval
+- Validates token index
+- Supports version tracking
+- Handles lifespan modification policy
+
+2. Security Mechanisms
+- Access control integration
+- Interface validation
+- Token index validation
+- Error handling helpers
+
+Unique Design Elements:
+- Serves as a template for specific metadata adapters
+- Removes direct lifespan modification
+- Supports factory-controlled metadata
+- Flexible interface extension
+- Implements OpenZeppelin's AccessControl
+
+The contract provides a robust, extensible base for creating metadata adapters with consistent behavior across different NFT implementations.
+ 
  */
 
 abstract contract BaseMetadataAdapter is IMetadataAdapter, AccessControl {

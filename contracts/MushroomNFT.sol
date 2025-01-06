@@ -14,6 +14,20 @@ import "./MushroomLib.sol";
  * @notice Upgradeable NFT implementation for Mushroom ecosystem
  * @dev Implements species-based NFTs with lifespan mechanics
  * @custom:security-contact security@example.com
+ 
+ This is an upgradeable NFT contract called MushroomNFT for the Mushroom ecosystem. It implements species-based NFTs with lifespan mechanics. Key features include:
+
+1. Access control roles for lifespan modification and minting.
+2. Storage of mushroom data and species types.
+3. Minting new mushrooms with species ID and lifespan.
+4. Burning mushrooms and clearing associated data.
+5. Adding new mushroom species with configurable strength, lifespan range, and supply cap.
+6. View functions to retrieve mushroom data, species configuration, and remaining mintable supply.
+7. Pausable functionality and reentrancy protection.
+8. Custom errors for improved gas efficiency and error handling.
+
+The contract inherits from ERC721UpgradeSafe, AccessControlUpgradeable, and ERC721BurnableUpgradeable contracts for core NFT functionality, access control, and token burning. It uses the MushroomLib library for mushroom-specific data structures and logic.
+ 
  */
 
 contract MushroomNFT is 

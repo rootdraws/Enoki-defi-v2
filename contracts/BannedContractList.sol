@@ -10,6 +10,40 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
  * @title BannedContractList
  * @dev Enhanced contract for maintaining a blacklist of banned contracts
  * @custom:security-contact security@example.com
+ 
+ This is a security contract for managing a blacklist of banned smart contracts:
+
+Key Features:
+- Tracks banned/approved contract addresses
+- Supports individual and batch contract status updates
+- Owner-controlled management
+- Pausable for emergency scenarios
+
+Core Functionality:
+1. Contract Status Management
+- Ban individual contracts
+- Approve (unban) individual contracts
+- Batch update contract statuses
+- Prevents zero-address interactions
+
+2. Security Mechanisms
+- Only owner can modify contract lists
+- Pausable contract
+- Emits events for status changes
+- Prevents redundant updates
+
+3. Approval Checks
+- `isApproved()` method to check contract status
+- `isBanned()` method to verify ban status
+
+Unique Design Elements:
+- Lightweight and focused security module
+- Flexible contract management
+- Prevents unnecessary state changes
+- Comprehensive error handling
+
+The contract provides a simple yet robust mechanism for managing a dynamic list of banned or approved smart contracts within an ecosystem.
+ 
  */
 
 contract BannedContractList is Ownable, Pausable {

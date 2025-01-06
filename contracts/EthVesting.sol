@@ -12,6 +12,33 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * @notice Advanced linear vesting schedule for ETH distribution
  * @dev Implements secure vesting with backup beneficiary system
  * @custom:security-contact security@example.com
+ * 
+
+This is an advanced Ethereum smart contract for a secure, linear ETH vesting mechanism with some unique features:
+
+Key Characteristics:
+- Supports a primary and backup beneficiary
+- Implements a configurable vesting schedule with a cliff period
+- Allows gradual release of ETH based on time elapsed
+- Includes safety checks like minimum/maximum duration limits
+- Provides pausable functionality for emergency scenarios
+
+Core Functions:
+1. `release()`: Allows the primary beneficiary to claim vested ETH
+2. `backupRelease()`: Enables the backup beneficiary to claim remaining funds after a grace period
+3. `vestedAmount()`: Calculates how much ETH has vested at the current time
+4. `getVestingDetails()`: Retrieves comprehensive information about the vesting schedule
+
+Security Features:
+- Uses OpenZeppelin's ReentrancyGuard to prevent recursive calls
+- Custom error handling for various edge cases
+- Requires non-zero addresses
+- Validates vesting schedule parameters
+- Implements pause/unpause functionality
+
+The contract ensures a structured, time-based distribution of ETH, with a backup mechanism if the primary beneficiary doesn't claim funds within a specified timeframe.
+
+ * 
  */
 
 contract EthVesting is ReentrancyGuard, Pausable {

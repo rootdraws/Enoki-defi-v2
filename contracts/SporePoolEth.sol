@@ -22,6 +22,10 @@ interface IMission {
  * @title ModernSporePoolEth
  * @notice Advanced ETH staking pool with flexible yield strategies and enhanced security
  * @dev Implements upgradeable patterns with modern safety features
+ 
+ This is an upgradeable ETH staking pool contract called ModernSporePoolEth. Users can stake ETH to earn SPORE token rewards based on a configurable reward rate. The staked ETH can be allocated to different yield strategies such as liquidity providing or lending. The contract includes features like pausability, reentrancy protection, and the ability to update the reward rate and yield strategy. Rewards are distributed among the user, a dev address, and a DAO address. The contract interacts with an external SPORE token contract for minting rewards and a mission contract for additional functionality.
+ 
+ 
  */
 contract ModernSporePoolEth is 
     Initializable, 

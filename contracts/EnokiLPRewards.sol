@@ -14,6 +14,42 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
  * @notice LP token staking with SPORE rewards for Enoki ecosystem
  * @dev Manages ENOKI-ETH LP staking to earn SPORE rewards
  * @custom:security-contact security@example.com
+ 
+ This is an advanced LP token staking contract for the Enoki ecosystem with sophisticated reward mechanics:
+
+Key Features:
+- Stake ENOKI-ETH LP tokens
+- Earn SPORE tokens as rewards
+- Dynamic reward rate management
+- Comprehensive staking tracking
+
+Core Mechanics:
+1. Staking Functionality
+- Minimum stake amount (0.001 LP)
+- One-hour harvest delay
+- Automatic reward calculation
+- Emergency withdrawal option
+
+2. Security Mechanisms
+- Reentrancy protection
+- Pausable contract
+- Owner-controlled reward rates
+- Maximum reward rate limit
+- Zero-address and amount checks
+
+3. Advanced Reward Accounting
+- Precise per-share reward tracking
+- Pending rewards calculation
+- Total rewards distribution tracking
+
+Unique Design Elements:
+- Tracks detailed user staking information
+- Flexible reward distribution
+- Allows owner to adjust reward rates
+- Multiple safety and emergency controls
+
+The contract provides a robust, flexible mechanism for liquidity providers to earn rewards in the Enoki DeFi ecosystem.
+ 
  */
 
 contract EnokiLPStaking is Ownable, ReentrancyGuard, Pausable {

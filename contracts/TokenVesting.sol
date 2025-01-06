@@ -10,6 +10,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * @title TokenVesting
  * @dev Contract that handles token vesting with cliff periods and linear release
  * 
+ *
+ 
+ This is a Token Vesting smart contract written in Solidity. It allows the owner to grant tokens to a beneficiary over a vesting schedule with a cliff period. The tokens are gradually released to the beneficiary in a linear fashion after the cliff period until the end of the vesting duration. The contract supports any ERC20 token and includes features like the ability for the owner to revoke unreleased tokens if configured as revocable.
+ 
+ * 
  * Key Features:
  * - Linear vesting over time
  * - Cliff period before vesting starts
