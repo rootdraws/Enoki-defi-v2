@@ -4,15 +4,12 @@
 
 ### Modernization | Updates [This is being set up on Arbitrum Sepolia Testnet]
 
-- Modernizing with Claude: [CURRENT]
-  - Modernize all xContracts.
-  - Check all metadata to make sure it works inconjunction with NFT Contracts.
-  - Correct all Interfaces, to make sure that they correlate with Contracts.
 - Minimalist pass through with Claude -- If there is a way to make the code more essential, and clear, then do it.
 - Remove all components of MiniMe Tokens, and replace with OpenZeppelin ERC20Votes, so that the project is compatible with Tally.
 - Enable transfer of ownership to the gnosis safe on tally, so that tally can take onchain actions.
 - Upgrade Randomizer to VRF Gelato
-- Consider upgrading these to incentivized 4626 Strategy Vaults, so Spore can be distributed for depositing within the 4626 Vault, and these can be LP Staking strategies that use Curve Pools, or Camelot Pools, or Compound Strategy Vaults.
+- Create a Spore Distribution system, which involves governance votes, and multiple Vault Campaigns.
+- Upgrade to incentivized 4626 Strategy Vaults, so Spore can be distributed for depositing within the 4626 Vault, and these can be LP Staking strategies that use Curve Pools, or Camelot Pools, or Compound Strategy Vaults.
   - [Vaultcraft Repo](https://github.com/Popcorn-Limited) Uses Gelato for Automation.
 
 ### Scripts

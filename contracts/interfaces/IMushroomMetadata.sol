@@ -1,72 +1,80 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import "../MushroomLib.sol";
+import "@openzeppelin/contracts/access/IAccessControl.sol";
 
-// Now that the bottom contracts are all Modernized, we need to upgrade these Interfaces
-// Copy the bottom contracts, and then say, Create an interface for these please, here is the previous interface.
+// File Modernized by Claude.AI Sonnet on 1/5/25.
 
 /**
  * @title IMushroomMetadata
- * @notice Interface for managing mushroom NFT metadata and lifecycle
- * @dev Defines core functionality for mushroom metadata management
+ * @notice Central hub interface for managing mushroom NFT metadata resolution
+ * @dev Coordinates metadata operations across different NFT types through adapters
  */
-interface IMushroomMetadata {
-    /**
-     * @notice Emitted when a mushroom's lifespan is updated
-     * @param nftContract Address of the NFT contract
-     * @param nftIndex Token ID of the mushroom
-     * @param lifespan New lifespan value
-     */
-    event MushroomLifespanSet(
-        address indexed nftContract,
-        uint256 indexed nftIndex,
-        uint256 lifespan
-    );
 
+interface IMushroomMetadata is IAccessControl {
     /**
-     * @notice Emitted when a resolver is set for an NFT contract
+     * @notice Emitted when a new metadata adapter is set
      * @param nftContract Address of the NFT contract
-     * @param resolver Address of the new resolver
+     * @param resolver Address of the metadata adapter
+     * @param setBy Address that set the resolver
      */
     event ResolverSet(
         address indexed nftContract,
-        address indexed resolver
+        address indexed resolver,
+        address indexed setBy
     );
 
     /**
-     * @notice Error thrown when NFT contract address is invalid
-     * @param nftContract The invalid contract address
+     * @notice Error thrown when NFT contract has no adapter
      */
-    error InvalidNFTContract(address nftContract);
+    error NoMetadataAdapter(address nftContract);
 
     /**
-     * @notice Error thrown when resolver address is invalid
-     * @param resolver The invalid resolver address
+     * @notice Error thrown when input address is invalid
      */
-    error InvalidResolver(address resolver);
+    error InvalidAddress(address addr);
 
     /**
-     * @notice Error thrown when lifespan value is invalid
-     * @param lifespan The invalid lifespan value
+     * @notice Error thrown when adapter operation fails
      */
-    error InvalidLifespan(uint256 lifespan);
+    error AdapterOperationFailed(address adapter, string reason);
 
     /**
-     * @notice Checks if an NFT contract has a metadata adapter
-     * @param nftContract Address of the NFT contract to check
-     * @return bool True if the contract has a metadata adapter
+     * @notice Checks if an NFT contract has a registered adapter
+     * @param nftContract The NFT contract to check
+     * @return bool True if the contract has a registered adapter
      */
     function hasMetadataAdapter(
         address nftContract
     ) external view returns (bool);
 
     /**
-     * @notice Retrieves mushroom data for a specific NFT
-     * @param nftContract Address of the NFT contract
-     * @param nftIndex Token ID of the mushroom
-     * @param data Additional data for the metadata adapter
-     * @return MushroomLib.MushroomData Mushroom metadata
+     * @notice Gets the adapter address for an NFT contract
+     * @param nftContract The NFT contract
+     * @return Address of the metadata adapter
+     */
+    function getMetadataAdapter(
+        address nftContract
+    ) external view returns (address);
+
+    /**
+     * @notice Checks if a token can be staked
+     * @param nftContract The NFT contract
+     * @param nftIndex The token ID
+     * @return True if token can be staked
+     */
+    function isStakeable(
+        address nftContract,
+        uint256 nftIndex
+    ) external view returns (bool);
+
+    /**
+     * @notice Gets mushroom metadata for a token
+     * @param nftContract The NFT contract
+     * @param nftIndex The token ID
+     * @param data Additional adapter data
+     * @return Mushroom metadata structure
      */
     function getMushroomData(
         address nftContract,
@@ -75,65 +83,23 @@ interface IMushroomMetadata {
     ) external view returns (MushroomLib.MushroomData memory);
 
     /**
-     * @notice Updates the lifespan of a mushroom NFT
-     * @param nftContract Address of the NFT contract
-     * @param nftIndex Token ID of the mushroom
-     * @param lifespan New lifespan value
-     * @param data Additional data for the metadata adapter
+     * @notice Checks if a token can be burned
+     * @param nftContract The NFT contract
+     * @param nftIndex The token ID
+     * @return True if token can be burned
      */
-    function setMushroomLifespan(
+    function isBurnable(
         address nftContract,
-        uint256 nftIndex,
-        uint256 lifespan,
-        bytes calldata data
-    ) external;
+        uint256 nftIndex
+    ) external view returns (bool);
 
     /**
-     * @notice Sets the resolver for an NFT contract
-     * @param nftContract Address of the NFT contract
-     * @param resolver Address of the new resolver
+     * @notice Sets or updates an NFT's metadata adapter
+     * @param nftContract The NFT contract
+     * @param resolver The adapter address
      */
     function setResolver(
         address nftContract,
         address resolver
     ) external;
-}
-
-// Claude added an Abstracat Contract here.
-
-/**
- * @title BaseMushroomMetadata
- * @notice Base implementation of the IMushroomMetadata interface
- * @dev Provides common functionality and library usage
- */
-abstract contract BaseMushroomMetadata is IMushroomMetadata {
-    using MushroomLib for MushroomLib.MushroomData;
-    using MushroomLib for MushroomLib.MushroomType;
-
-    /**
-     * @dev Internal function to validate NFT contract address
-     */
-    function _validateNFTContract(address nftContract) internal pure {
-        if (nftContract == address(0)) {
-            revert InvalidNFTContract(nftContract);
-        }
-    }
-
-    /**
-     * @dev Internal function to validate resolver address
-     */
-    function _validateResolver(address resolver) internal pure {
-        if (resolver == address(0)) {
-            revert InvalidResolver(resolver);
-        }
-    }
-
-    /**
-     * @dev Internal function to validate lifespan value
-     */
-    function _validateLifespan(uint256 lifespan) internal pure {
-        if (lifespan == 0) {
-            revert InvalidLifespan(lifespan);
-        }
-    }
 }

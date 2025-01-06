@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-// Now that the bottom contracts are all Modernized, we need to upgrade these Interfaces
-// Copy the bottom contracts, and then say, Create an interface for these please, here is the previous interface.
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "../MushroomNFT.sol";
+
+// File Modernized by Claude.AI Sonnet on 1/5/25.
 
 /**
  * @title IMushroomFactory
- * @notice Interface for mushroom NFT creation and management
- * @dev Standardizes mushroom creation across different factory implementations
+ * @notice Interface for advanced mushroom NFT creation and management
  */
 
 interface IMushroomFactory {
@@ -23,24 +24,21 @@ interface IMushroomFactory {
         uint256 indexed speciesId
     );
 
-    /**
-     * @notice Thrown when requested amount exceeds available supply
-     * @param requested Number requested
-     * @param available Number available
-     */
+    // Errors
     error ExceedsSpeciesLimit(uint256 requested, uint256 available);
-
-    /**
-     * @notice Thrown when recipient address is invalid
-     * @param recipient The invalid address
-     */
     error InvalidRecipient(address recipient);
-
-    /**
-     * @notice Thrown when requested amount is invalid
-     * @param amount The invalid amount
-     */
     error InvalidAmount(uint256 amount);
+    error InvalidTokenAddress(address token);
+    error InvalidLifespanRange(uint256 min, uint256 max);
+    error ProtectedToken(address token);
+
+    // View Functions
+    function sporeToken() external view returns (IERC20);
+    function mushroomNft() external view returns (MushroomNFT);
+    function costPerMushroom() external view returns (uint256);
+    function getRemainingMintableForSpecies() external view returns (uint256);
+    function getFactorySpecies() external view returns (uint256);
+    function spawnCount() external view returns (uint256);
 
     /**
      * @notice Creates new mushroom NFTs
@@ -54,14 +52,12 @@ interface IMushroomFactory {
     ) external returns (uint256[] memory tokenIds);
 
     /**
-     * @notice Gets remaining mintable mushrooms for factory's species
-     * @return remaining Number of mushrooms still mintable
+     * @notice Recovers accidentally sent tokens
+     * @param token Token to recover
+     * @param amount Amount to recover
      */
-    function getRemainingMintableForSpecies() external view returns (uint256);
-
-    /**
-     * @notice Gets the species ID this factory creates
-     * @return Species identifier
-     */
-    function getFactorySpecies() external view returns (uint256);
+    function collectDust(
+        IERC20 token,
+        uint256 amount
+    ) external;
 }

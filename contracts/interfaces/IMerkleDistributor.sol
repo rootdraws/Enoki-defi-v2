@@ -1,89 +1,98 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-// Now that the bottom contracts are all Modernized, we need to upgrade these Interfaces
-// Copy the bottom contracts, and then say, Create an interface for these please, here is the previous interface.
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+// File Modernized by Claude.AI Sonnet on 1/5/25.
 
 /**
- * @title IMerkleDistributor
- * @notice Interface for claiming tokens using merkle proofs
- * @dev Implements a merkle-based distribution mechanism for token airdrops
+ * @title IModernMerkleDistributor
+ * @notice Interface for advanced token distribution system using Merkle proofs
  */
-interface IMerkleDistributor {
-    /**
-     * @notice Token distribution claim event
-     * @param index Index in the merkle tree
-     * @param account Address receiving the claim
-     * @param amount Amount of tokens claimed
-     * @param tipAmount Amount of tokens given as tip
-     */
-    event Claimed(
+
+interface IModernMerkleDistributor {
+    // Structs
+    struct ClaimInfo {
+        bool claimed;
+        uint256 amount;
+        uint256 timestamp;
+        address claimer;
+    }
+
+    // Events
+    event TokensClaimed(
         uint256 indexed index,
-        address indexed account,
-        uint256 amount,
-        uint256 tipAmount
+        address indexed recipient,
+        address indexed claimer,
+        uint256 claimedAmount,
+        uint256 tipAmount,
+        uint256 timestamp
     );
 
-    /**
-     * @notice Error thrown when claim proof is invalid
-     * @param index Index that was attempted to claim
-     * @param account Address attempting to claim
-     */
-    error InvalidProof(uint256 index, address account);
+    event UnclaimedTokensTransferred(
+        address indexed recipient,
+        uint256 amount,
+        uint256 timestamp
+    );
 
-    /**
-     * @notice Error thrown when claim has already been processed
-     * @param index Index that was attempted to claim
-     */
-    error AlreadyClaimed(uint256 index);
+    event DustCollected(
+        address indexed collector,
+        address indexed token,
+        uint256 amount,
+        uint256 timestamp
+    );
 
-    /**
-     * @notice Error thrown when tip percentage is too high
-     * @param tipBips Attempted tip amount in BIPS
-     */
-    error TipTooHigh(uint256 tipBips);
+    event EmergencyAction(
+        string indexed action,
+        address indexed initiator,
+        uint256 timestamp
+    );
 
-    /**
-     * @notice Get the address of the token being distributed
-     * @return Address of the token contract
-     */
-    function token() external view returns (address);
+    // Errors
+    error InvalidAddress(address providedAddress);
+    error ClaimAlreadyProcessed(uint256 index, address claimer);
+    error InvalidClaimProof(uint256 index, address recipient, uint256 amount);
+    error InvalidTipPercentage(uint256 provided, uint256 maximum);
+    error ReleaseTimeNotReached(uint256 current, uint256 required);
+    error ProtectedTokenTransfer(address token);
+    error InsufficientBalance(uint256 requested, uint256 available);
+    error ZeroAmount();
+    error InvalidMerkleRoot();
 
-    /**
-     * @notice Get the merkle root of the distribution tree
-     * @return The merkle root hash
-     */
-    function merkleRoot() external view returns (uint256);
+    // View Functions
+    function distributionToken() external view returns (IERC20);
+    function merkleRoot() external view returns (bytes32);
+    function daoTreasury() external view returns (address);
+    function daoReleaseTime() external view returns (uint256);
+    function totalClaimed() external view returns (uint256);
+    function totalClaims() external view returns (uint256);
+    function getClaimInfo(uint256 index) external view returns (
+        bool claimed,
+        uint256 amount,
+        uint256 timestamp,
+        address claimer
+    );
+    function isClaimed(uint256 index) external view returns (bool);
+    function getDistributionTokenBalance() external view returns (uint256);
+    function getEthBalance() external view returns (uint256);
 
-    /**
-     * @notice Claim tokens for an account using a merkle proof
-     * @param index Index in the merkle tree
-     * @param account Address receiving the claim
-     * @param amount Amount of tokens to claim
-     * @param merkleProof Array of hashes forming the merkle proof
-     * @param tipBips Optional tip percentage in BIPS (1 BIP = 0.01%)
-     * @param _merkleRoot Expected merkle root (for verification)
-     * @dev Reverts if the proof is invalid or claim has been processed
-     */
+    // State-Changing Functions
     function claim(
         uint256 index,
-        address payable account,
+        address recipient,
         uint256 amount,
         bytes32[] calldata merkleProof,
-        uint256 tipBips,
-        uint256 _merkleRoot
+        uint256 tipPercentage
     ) external;
 
-    /**
-     * @notice Check if a claim has been processed
-     * @param index Index in the merkle tree to check
-     * @return True if the index has been claimed
-     */
-    function isClaimed(uint256 index) external view returns (bool);
+    function transferUnclaimedToDao() external;
+    function pause() external;
+    function unpause() external;
+    function collectDust(
+        address tokenAddress,
+        uint256 amount
+    ) external;
 
-    /**
-     * @notice Returns the maximum allowed tip in BIPS
-     * @return Maximum tip percentage (100 = 1%)
-     */
-    function MAX_TIP_BIPS() external view returns (uint256);
+    // Special Function
+    receive() external payable;
 }
