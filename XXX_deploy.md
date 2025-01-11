@@ -1,7 +1,5 @@
 # Deploy Process
 
-There is a deployer which runs the deploy script. By the end of the script, it will have transferred all ownership & tokens to their appropriate recipients. There are two deploys, one for the Enoki Core and one for the Pools, Mushrooms & associated mechanics.
-
 ## Stage 1: Enoki Core
 
 Prerequisites (Before script, put addresses in launch config):
@@ -21,11 +19,8 @@ Script Actions:
 - 2/3 of presale funds go to 6 months token vesting
 - 1/3 goes toward initial liquidity, will be sent directly to dev multisig for locking in Uni pool
 
-// This one above, needs to be adjusted.
-
 - Deploy Presale
 - Lock portion of SPORE supply in presale
-- Add all whitelist addresses from config, in batches
 
 - Deploy Proxy Admin for DAO Upgradable Contracts
 
@@ -67,5 +62,3 @@ Script Actions:
 - Give Mushroom factories minting permissions for Mushroom NFTs
 
 - Setup Metadata Resolver permissions & abilities for Mushroom factories
-
-- Deploy Incubator

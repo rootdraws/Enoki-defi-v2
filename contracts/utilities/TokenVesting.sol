@@ -4,16 +4,11 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-// File Modernized by Claude.AI Sonnet on 1/5/25.
+// File Processed by Claude.AI Sonnet on 1/11/25.
+
+// ENOKI TEAM VESTING CONTRACT
 
 /**
- * @title TokenVesting
- * @dev Contract that handles token vesting with cliff periods and linear release
- * 
- *
- 
- This is a Token Vesting smart contract written in Solidity. It allows the owner to grant tokens to a beneficiary over a vesting schedule with a cliff period. The tokens are gradually released to the beneficiary in a linear fashion after the cliff period until the end of the vesting duration. The contract supports any ERC20 token and includes features like the ability for the owner to revoke unreleased tokens if configured as revocable.
- 
  * 
  * Key Features:
  * - Linear vesting over time
@@ -49,20 +44,12 @@ contract TokenVesting is Ownable {
     mapping(address token => uint256 amount) private _released;
     mapping(address token => bool status) private _revoked;
 
-    /**
-     * @dev Sets up vesting schedule
-     * @param beneficiary_ Address of beneficiary to receive the tokens
-     * @param start_ Start time of the vesting period
-     * @param cliffDuration_ Duration of the cliff period
-     * @param duration_ Duration of the vesting period
-     * @param revocable_ Whether the vesting is revocable
-     */
     constructor(
-        address beneficiary_,
-        uint256 start_,
-        uint256 cliffDuration_,
-        uint256 duration_,
-        bool revocable_
+        address beneficiary_, // Address of beneficiary to receive the tokens
+        uint256 start_, // Start time of the vesting period 
+        uint256 cliffDuration_, // Duration of the cliff period
+        uint256 duration_, // Duration of the vesting period
+        bool revocable_ // Whether the vesting is revocable
     ) Ownable(msg.sender) {
         if (beneficiary_ == address(0)) revert ZeroAddress();
         if (cliffDuration_ > duration_) revert CliffLongerThanDuration();
@@ -76,45 +63,42 @@ contract TokenVesting is Ownable {
         _start = start_;
     }
 
-    /// @notice Get the beneficiary address
+    // Get the beneficiary address
     function beneficiary() external view returns (address) {
         return _beneficiary;
     }
 
-    /// @notice Get the cliff timestamp
+    // Get the cliff timestamp
     function cliff() external view returns (uint256) {
         return _cliff;
     }
 
-    /// @notice Get the start timestamp
+    // Get the start timestamp
     function start() external view returns (uint256) {
         return _start;
     }
 
-    /// @notice Get the vesting duration
+    // Get the vesting duration
     function duration() external view returns (uint256) {
         return _duration;
     }
 
-    /// @notice Check if the vesting is revocable
+    // Check if the vesting is revocable
     function revocable() external view returns (bool) {
         return _revocable;
     }
 
-    /// @notice Get the amount of tokens released for a given token
+    // Get the amount of tokens released for a given token
     function released(address token) external view returns (uint256) {
         return _released[token];
     }
 
-    /// @notice Check if vesting has been revoked for a given token
+    // Check if vesting has been revoked for a given token
     function revoked(address token) external view returns (bool) {
         return _revoked[token];
     }
 
-    /**
-     * @notice Transfers vested tokens to beneficiary
-     * @param token ERC20 token which is being vested
-     */
+    // Transfers vested ERC20 tokens to beneficiary
     function release(IERC20 token) external {
         uint256 unreleased = _releasableAmount(token);
         if (unreleased == 0) revert NoTokensDue();
@@ -128,10 +112,7 @@ contract TokenVesting is Ownable {
         emit TokensReleased(address(token), unreleased);
     }
 
-    /**
-     * @notice Allows the owner to revoke the vesting
-     * @param token ERC20 token which is being vested
-     */
+    // Allows the owner to revoke the vesting
     function revoke(IERC20 token) external onlyOwner {
         if (!_revocable) revert CannotRevoke();
         if (_revoked[address(token)]) revert AlreadyRevoked();
@@ -148,16 +129,12 @@ contract TokenVesting is Ownable {
         emit TokenVestingRevoked(address(token));
     }
 
-    /**
-     * @dev Calculates the amount that has already vested but hasn't been released yet
-     */
+    // Calculates the amount that has already vested but hasn't been released yet
     function _releasableAmount(IERC20 token) private view returns (uint256) {
         return _vestedAmount(token) - _released[address(token)];
     }
 
-    /**
-     * @dev Calculates the amount that has already vested
-     */
+    // Calculates the amount that has already vested
     function _vestedAmount(IERC20 token) private view returns (uint256) {
         uint256 currentBalance = token.balanceOf(address(this));
         uint256 totalBalance;
