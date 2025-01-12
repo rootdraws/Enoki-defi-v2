@@ -6,7 +6,10 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../vaults/SporeVault.sol";
 import "../vaults/SporeVaultFactory.sol";
 
-contract SporeQuests is Ownable {
+// SPORE Missions Contract
+// This is a contract for the Spore ecosystem. It is used to create missions for the vaults.
+
+contract SporeMissions is Ownable {
     using SafeERC20 for IERC20;
 
     struct Mission {

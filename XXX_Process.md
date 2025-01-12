@@ -4,6 +4,9 @@
 
 ### Modernization | Updates [This is being set up on Arbitrum Sepolia Testnet]
 
+- [Oracle](https://medium.com/@parsaadana4/redstone-defi-oracle-integration-step-by-step-guide-3726b3f319e1)
+
+- Need to work through the Vault structure - I like the directional vault, let's pick one, and ship it to testnet, then expand to multiple for mainnet vaults.
 - Minimalist pass through with Claude -- If there is a way to make the code more essential, and clear, then do it.
 - Remove all components of MiniMe Tokens, and replace with OpenZeppelin ERC20Votes, so that the project is compatible with Tally.
 - Enable transfer of ownership to the gnosis safe on tally, so that tally can take onchain actions.

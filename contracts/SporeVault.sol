@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/**
- * @title SporeVault
- * @notice This vault contract is currently missing strategy reward rate implementations
- * @dev TODO: 
- * - Implement reward rate calculations from strategy profits
- * - Consider forking VaultCraft for strategy implementations
- * - Add proper reward distribution mechanisms
- * - Current rewardRate parameter is placeholder until implementation
- */
+// SPORE VAULT CONTRACT | FACTORY INSTANCE
+// This is a vault contract for the Spore ecosystem. It is used to deposit and withdraw tokens.
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
@@ -17,9 +10,7 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
-// This is an instance of a Vault Contract.
 // Each Vault is assigned a Strategy Contract.
-
 interface IStrategy {
     function invest(uint256 amount) external returns (uint256);
     function divest(uint256 amount) external returns (uint256);

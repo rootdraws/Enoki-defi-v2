@@ -15,6 +15,8 @@ contract RedstoneOracle {
     // The address of the price feed adapter on Corn
     address public constant PRICE_FEED_ADAPTER = 0xD15862FC3D5407A03B696548b6902D6464A69b8c;
 
+    // https://app.redstone.finance/app/feeds/?networks=21000000&page=1&sortBy=popularity&sortDesc=false&perPage=32
+
     // Common tokens (add more as needed)
     bytes32 public constant BTC_FEED_ID = 0x4254430000000000000000000000000000000000000000000000000000000000; // "BTC"
     bytes32 public constant ETH_FEED_ID = 0x4554480000000000000000000000000000000000000000000000000000000000; // "ETH"
