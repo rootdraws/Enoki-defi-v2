@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 // File Processed by Claude.AI Sonnet on 1/11/25.
 
-// ENOKI TEAM VESTING CONTRACT
+// ENOKI TEAM VESTING CONTRACT | UTILITY CONTRACT
 
 /**
  * 

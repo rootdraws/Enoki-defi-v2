@@ -4,6 +4,11 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+// File Processed by Claude.AI Sonnet on 1/11/25.
+
+// SPORE VESTING CONTRACT | FACTORY INSTANCE
+// This is a vesting contract for the Spore ecosystem. It is used to vest tokens for the vaults.
+
 contract SporeVesting is Initializable {
     using SafeERC20 for IERC20;
 
@@ -28,11 +33,12 @@ contract SporeVesting is Initializable {
     string public name;
     string public symbol;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
+    // Constructor
     constructor() {
         _disableInitializers();
     }
 
+    // Initialize the vesting contract
     function initialize(
         address _vault,
         string memory _name,
@@ -43,12 +49,7 @@ contract SporeVesting is Initializable {
         symbol = _symbol;
     }
 
-    /**
-     * @notice Deposit tokens to be vested
-     * @dev Anyone can deposit tokens which will vest over 30 days
-     * @param token The ERC20 token to vest
-     * @param amount Amount of tokens to vest
-     */
+    // Deposit tokens to be vested
     function depositTokens(address token, uint256 amount) external {
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         
@@ -61,10 +62,7 @@ contract SporeVesting is Initializable {
         emit TokensReceived(token, amount, block.timestamp);
     }
 
-    /**
-     * @notice Releases vested tokens to the vault
-     * @param token The token to release
-     */
+    // Releases vested tokens to the vault
     function releaseVested(address token) external {
         uint256 vestedAmount = _calculateVestedAmount(token);
         if (vestedAmount == 0) revert NoVestedTokens();
@@ -75,11 +73,7 @@ contract SporeVesting is Initializable {
         emit TokensReleased(token, vestedAmount, block.timestamp);
     }
 
-    /**
-     * @notice Calculate amount of tokens that have vested
-     * @param token The token to check
-     * @return Amount of tokens that can be released
-     */
+    // Calculate amount of tokens that have vested
     function _calculateVestedAmount(address token) internal view returns (uint256) {
         VestingSchedule memory schedule = vestingSchedules[token];
         uint256 balance = IERC20(token).balanceOf(address(this));
@@ -93,11 +87,7 @@ contract SporeVesting is Initializable {
         return (balance * timePassed) / VESTING_DURATION;
     }
 
-    /**
-     * @notice View function to check currently vested amount
-     * @param token The token to check
-     * @return Amount of tokens currently vested
-     */
+    // Read currently vested amount
     function vestedAmount(address token) external view returns (uint256) {
         return _calculateVestedAmount(token);
     }
