@@ -2,10 +2,17 @@ import "../frontend/SporeQuests.sol";
 
 // File Processed by Claude.AI Sonnet on 1/11/25.
 
-// SPORE VAULT FACTORY CONTRACT
+// SPORE FACTORY CONTRACT
 // This is a factory contract for the Spore ecosystem. It is used to deploy vaults.
 
-contract SporeVaultFactory is Ownable {
+contract SporeFactory is Ownable {
+    event VaultDeployed(
+        address indexed strategy,
+        address indexed vault,
+        address indexed vesting,
+        address depositToken
+    );
+
     SporeQuests public quests;
     string public constant DEFAULT_DESCRIPTION = "Join this mission to earn SPORE rewards by providing liquidity to our strategy.";
 
