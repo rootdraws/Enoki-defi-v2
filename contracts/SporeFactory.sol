@@ -1,4 +1,4 @@
-import "../frontend/SporeQuests.sol";
+import "./SporeMissions.sol";
 
 // File Processed by Claude.AI Sonnet on 1/11/25.
 
@@ -13,17 +13,17 @@ contract SporeFactory is Ownable {
         address depositToken
     );
 
-    SporeQuests public quests;
-    string public constant DEFAULT_DESCRIPTION = "Join this mission to earn SPORE rewards by providing liquidity to our strategy.";
+    SporeMissions public missions;
+    string public constant DEFAULT_DESCRIPTION = "Join this mission to earn SPORE and Farm Enoki!";
 
-    // Set the quests contract
-    function setQuestsContract(address _quests) external onlyOwner {
-        if (_quests == address(0)) revert InvalidAddress();
-        quests = SporeQuests(_quests);
+    // Set the missions contract
+    function setMissionsContract(address _missions) external onlyOwner {
+        if (_missions == address(0)) revert InvalidAddress();
+        missions = SporeMissions(_missions);
     }
 
-// Deploy a new vault
-    function deployVault(
+// Deploy a new mission
+    function deployMission(
         address strategy,
         string calldata strategyName,
         address daoRewardAddress,
@@ -33,8 +33,8 @@ contract SporeFactory is Ownable {
         if (strategy == address(0)) revert InvalidAddress();
         if (daoRewardAddress == address(0)) revert InvalidAddress();
         
-        // Deploy new vault and vesting contracts
-        vault = address(new SporeVault(
+        // Deploy new mission and vesting contracts
+        mission = address(new SporeMission(
             strategy,
             address(depositToken),
             daoRewardAddress,
@@ -42,17 +42,17 @@ contract SporeFactory is Ownable {
         ));
         
         vesting = address(new SporeVesting(
-            vault,
+            mission,
             address(depositToken)
         ));
         
-        // Initialize vault with vesting contract
-        SporeVault(vault).setVestingContract(vesting);
+        // Initialize mission with vesting contract
+        SporeMission(mission).setVestingContract(vesting);
         
         // Register as new mission if quests contract is set
-        if (address(quests) != address(0)) {
-            quests.registerMission(
-                vault,
+        if (address(missions) != address(0)) {
+            missions.registerMission(
+                mission,
                 vesting,
                 strategy,
                 strategyName,
@@ -60,6 +60,6 @@ contract SporeFactory is Ownable {
             );
         }
 
-        emit VaultDeployed(strategy, vault, vesting, address(depositToken));
+        emit MissionDeployed(strategy, mission, vesting, address(depositToken));
     }
 } 
